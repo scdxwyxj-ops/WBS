@@ -1,6 +1,6 @@
 {
-"data_path": "/mnt/a/my_data/GrTh",
-"checkpoint": "/mnt/a/OneDrive/code/research_on_SAM2/sam2/checkpoints/sam2.1_hiera_large.pt",
+"data_path": "/app/SAM2_proj/WBC/GrTh",
+"checkpoint": "/app/SAM2_proj/sam2/checkpoints/sam2.1_hiera_large.pt",
 "model_cfg": "configs/sam2.1/sam2.1_hiera_l.yaml",
 "pipeline_cfg": "configs/pipeline.json"
 }
