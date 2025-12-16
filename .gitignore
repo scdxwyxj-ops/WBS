@@ -3,3 +3,5 @@ sam2/
 assets/
 
 .DS_Store
+
+CONSTANT.json
