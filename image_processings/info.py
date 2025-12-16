@@ -28,7 +28,7 @@ class AlgorithmSettings:
     min_point_distance: float = 10.0
     use_convex_hull: bool = True
     convex_hull_threshold: float = 0.85
-    mask_prompt_strategy: str = "foreground"
+    produce_low_res_mask: bool = True
     mask_pool_iou_threshold: float = 0.9
     target_area_ratio: float = 0.05
     initial_color_mode: str = "dark"
@@ -37,10 +37,15 @@ class AlgorithmSettings:
 
     @classmethod
     def from_pipeline_config(
-        cls, config: Optional[PipelineAlgorithmConfig]
+        cls,
+        config: Optional[PipelineAlgorithmConfig],
+        *,
+        mask_prompt_source: Optional[str] = None,
     ) -> "AlgorithmSettings":
         if config is None:
             return cls()
+        strategy = (mask_prompt_source or "").lower()
+        produce_low_res = strategy in {"slic", "foreground", "algorithm", "slic_foreground"}
         return cls(
             negative_pct=config.negative_pct,
             score_lower_bound=config.score_lower_bound,
@@ -53,7 +58,7 @@ class AlgorithmSettings:
             min_point_distance=config.min_point_distance,
             use_convex_hull=config.use_convex_hull,
             convex_hull_threshold=config.convex_hull_threshold,
-            mask_prompt_strategy=config.mask_prompt_strategy,
+            produce_low_res_mask=produce_low_res,
             mask_pool_iou_threshold=config.mask_pool_iou_threshold,
             target_area_ratio=config.target_area_ratio,
             initial_color_mode=config.initial_color_mode,
@@ -91,6 +96,7 @@ class Info:
         *,
         settings: Optional[PipelineAlgorithmConfig] = None,
         debug_mode: bool = True,
+        mask_prompt_source: Optional[str] = None,
     ) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.logger.setLevel(logging.DEBUG if debug_mode else logging.WARNING)
@@ -104,7 +110,7 @@ class Info:
             self.logger.addHandler(handler)
             self.logger.propagate = False
 
-        self.settings = AlgorithmSettings.from_pipeline_config(settings)
+        self.settings = AlgorithmSettings.from_pipeline_config(settings, mask_prompt_source=mask_prompt_source)
         self.segment_indices, self.segment_ids = self._normalise_segments(segment)
         self.image = image
         self.graph = graph
@@ -266,7 +272,7 @@ class Info:
         mask_prompt = self._compose_foreground_mask(additional_indices=[candidate_id] if candidate_id is not None else None)
         low_res_mask = None
 
-        if mask_prompt is not None and self.settings.mask_prompt_strategy == "foreground":
+        if mask_prompt is not None and self.settings.produce_low_res_mask:
             low_res_mask = self.reshape_mask(mask_prompt)
 
         if include_augmented_point and self.settings.augment_positive_points and self.mask is not None:

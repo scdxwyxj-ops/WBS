@@ -16,7 +16,7 @@ inference behaviour without touching code.
 pipeline.json
 ├── dataset              # Dataset source and resizing
 ├── preprocessing        # SLIC and graph construction
-├── algorithm            # Prompt selection & iteration loop
+├── algorithm            # Prompt selection, scoring & iteration loop
 └── sam                  # Predictor call options
 ```
 
@@ -67,19 +67,30 @@ Controls the iterative prompt-promotion loop (`image_processings.info.Info`).
 - `use_convex_hull` *(bool)* – If true, build mask prompts from the convex hull
   of current foreground segments (selective hull controlled by the threshold).
 - `convex_hull_threshold` *(float)* – Area ratio threshold for hull replacement.
-- `mask_prompt_strategy` *("foreground" | "none" | "previous")* – Determines
-  which mask prompt (if any) is fed back to SAM during candidate evaluation.
+- `initial_color_mode` *("red" | "dark")* – How to rank nodes when seeding
+  positives/negatives (`red` = bright red first, `dark` = darker regions first).
+- `initial_positive_count` *(int)* – Number of seed positive nodes.
+- `mask_pool_iou_threshold` *(float)* – IoU threshold used to deduplicate the
+  stored mask pool before final selection.
+- `target_area_ratio` *(float)* – Target foreground ratio when scoring masks
+  with `pick_obj`.
+- `selection_strategy` *("pick_obj" | "cluster_middle")* – How the final mask is
+  chosen from the pool: direct score ranking vs. ranking within the middle-area
+  cluster (`mask_cluster.select_middle_cluster_entry`).
 
 ## `sam`
 
-Options passed directly into `SAM2ImagePredictor.predict`.
+Options passed directly into `SAM2ImagePredictor.predict`. This is separate
+from the algorithm-level mask prompt handling: both are used.
 
 - `multimask_output` *(bool)* – Enable multi-mask sampling if you want multiple
   hypotheses returned per call (defaults to `False` for efficiency).
-- `mask_prompt_strategy` *("algorithm" | "none" | "previous_low_res")* –
-  Selects which mask array is used as `mask_input`:
-  - `algorithm` – Use the low-resolution mask produced from the current prompt set.
-  - `previous_low_res` – Reuse the last SAM-provided low-res mask.
+- `mask_prompt_source` *("slic" | "previous_low_res" | "none")* – Single switch
+  for mask prompts fed into `mask_input`:
+  - `slic` – Use the foreground mask built from the promoted SLIC segments
+    (convex hull optional). This also triggers creation of a low-res mask inside
+    the algorithm loop.
+  - `previous_low_res` – Reuse the last low-res mask returned by SAM.
   - `none` – Disable mask prompting entirely.
 - `refine_with_previous_low_res` *(bool)* – After the main loop, optionally run
   extra SAM passes seeded with the last low-res mask.
@@ -95,3 +106,6 @@ Options passed directly into `SAM2ImagePredictor.predict`.
    impact on new datasets.
 4. When experimenting, copy `pipeline.json` and point `CONSTANT.json:pipeline_cfg`
    to the variant so you can switch configurations quickly.
+5. Mask prompts are now controlled by a single switch: set `sam.mask_prompt_source`
+   to `slic`, `previous_low_res`, or `none` depending on whether you want SLIC
+   foreground, SAM’s last low-res output, or no mask prompt.

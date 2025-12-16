@@ -28,18 +28,15 @@
     "min_point_distance": 10,
     "use_convex_hull": true,
     "convex_hull_threshold": 0.85,
-    "mask_prompt_strategy": "foreground",
     "mask_pool_iou_threshold": 0.9,
     "target_area_ratio": 0.65,
     "initial_color_mode": "red",
     "initial_positive_count": 3,
-    "selection_strategy": "cluster_middle",
-    "_comment" : "initial_color_mode: red | dark"
-
+    "selection_strategy": "cluster_middle"
   },
   "sam": {
     "multimask_output": false,
-    "mask_prompt_strategy": "algorithm",
+    "mask_prompt_source": "slic",
     "refine_with_previous_low_res": true,
     "refine_rounds": 2
   }

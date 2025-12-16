@@ -48,7 +48,6 @@ class AlgorithmConfig:
     min_point_distance: float
     use_convex_hull: bool
     convex_hull_threshold: float
-    mask_prompt_strategy: str
     mask_pool_iou_threshold: float
     target_area_ratio: float
     initial_color_mode: str
@@ -59,7 +58,7 @@ class AlgorithmConfig:
 @dataclass(frozen=True)
 class SAMConfig:
     multimask_output: bool
-    mask_prompt_strategy: str
+    mask_prompt_source: str
     refine_with_previous_low_res: bool
     refine_rounds: int
 
@@ -116,7 +115,6 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         min_point_distance=float(data["algorithm"]["min_point_distance"]),
         use_convex_hull=bool(data["algorithm"]["use_convex_hull"]),
         convex_hull_threshold=float(data["algorithm"]["convex_hull_threshold"]),
-        mask_prompt_strategy=str(data["algorithm"]["mask_prompt_strategy"]),
         mask_pool_iou_threshold=float(data["algorithm"]["mask_pool_iou_threshold"]),
         target_area_ratio=float(data["algorithm"]["target_area_ratio"]),
         initial_color_mode=str(data["algorithm"].get("initial_color_mode", "dark")),
@@ -126,7 +124,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
 
     sam_cfg = SAMConfig(
         multimask_output=bool(data["sam"]["multimask_output"]),
-        mask_prompt_strategy=str(data["sam"]["mask_prompt_strategy"]),
+        mask_prompt_source=str(data["sam"].get("mask_prompt_source", data["sam"].get("mask_prompt_strategy", "none"))),
         refine_with_previous_low_res=bool(data["sam"]["refine_with_previous_low_res"]),
         refine_rounds=int(data["sam"]["refine_rounds"]),
     )

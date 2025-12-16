@@ -55,12 +55,12 @@
   - `update_from_logits`: stores logits/mask, recomputes adaptive threshold, promotes all unlabelled nodes whose mean mask ratio exceeds threshold.
   - `get_candidates`: gathers all `label=-1` neighbours of current positives (graph connectivity), drops edge nodes, filters by `score_lower_bound`, sorts by mean logits, and truncates to `candidate_top_k`.
   - `commit_candidate`: permanently promotes a selected node, updates prompts and foreground mask.
-  - `build_prompts`:
+- `build_prompts`:
     - Generates positive point list (current positives + optional candidate + optional convex-hull augmentation point).
     - Optional `points_filter` keeps positives within configurable central window and enforces `min_point_distance` when `use_subset_points` is true.
     - Negative points remain the initial edge-based set.
     - Builds `mask_prompt` from union of positive segments, optionally wrapped by `apply_selective_convex_hull` when `use_convex_hull` is enabled.
-    - `mask_prompt_strategy` governs whether the foreground mask is returned as `low_res_mask` for downstream use.
+    - When `sam.mask_prompt_source="slic"` the foreground mask is downsampled and stored as `low_res_mask`; other modes skip mask prompts.
   - `record_low_res_mask` caches the most recent SAM low-resolution mask for future rounds.
 - Mask pool / selection
   - Every SAM call is stored in `mask_pool`/`mask_pool_full` with mask/logits/prompts/score; pool is deduped by IoU via `mask_pool_iou_threshold`.
@@ -121,6 +121,6 @@
 - Requirement §4:
   - Candidate expansion (4.1) realised via `Info.get_candidates` and `_evaluate_candidates`, with `candidate_top_k` controlling how many neighbours to test.
   - Convex-hull augmentation (4.2) toggled by `algorithm.use_convex_hull`; centroid-based extra prompt added during `Info.build_prompts`.
-  - Prompt/mask packaging (4.3) handled inside `Info.build_prompts` + `_select_mask_input`, aligning with mask prompt strategy options.
+  - Prompt/mask packaging (4.3) handled inside `Info.build_prompts` + `_select_mask_input`, aligning with `sam.mask_prompt_source` (`slic`, `previous_low_res`, `none`).
   - Final selection now ranks the deduped mask pool via `pick_obj` and optional area clustering (`selection_strategy`).
 - Hyper-parameters for these behaviours live in `pipeline.json` for experimentation.

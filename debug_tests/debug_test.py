@@ -70,14 +70,14 @@ def _prepare_segment_data(pre_segment: image_i_segment) -> Tuple[np.ndarray, np.
 
 
 def _select_mask_input(bundle: PromptBundle, info: Info, sam_cfg) -> Optional[np.ndarray]:
-    strategy = sam_cfg.mask_prompt_strategy.lower()
+    strategy = sam_cfg.mask_prompt_source.lower()
     if strategy in {"none", "off"}:
         return None
     if strategy in {"previous_low_res", "previous"}:
         return info.last_low_res_mask
-    if strategy in {"algorithm", "foreground"}:
+    if strategy in {"algorithm", "foreground", "slic"}:
         return bundle.low_res_mask
-    raise ValueError(f"Unknown mask_prompt_strategy: {sam_cfg.mask_prompt_strategy}")
+    raise ValueError(f"Unknown mask_prompt_source: {sam_cfg.mask_prompt_source}")
 
 
 def _run_prediction(
@@ -179,6 +179,7 @@ def run_unsupervised_segmentation(
         graph=pre_segment.graph,
         settings=config.algorithm,
         debug_mode=False,
+        mask_prompt_source=config.sam.mask_prompt_source,
     )
 
     history: List[StepRecord] = []
