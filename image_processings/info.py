@@ -13,8 +13,11 @@ from scipy.ndimage import binary_fill_holes
 
 from configs.pipeline_config import AlgorithmConfig as PipelineAlgorithmConfig
 from image_processings.node import Node
-from image_processings.pick_obj_using_entropy import pick_obj_using_entropy
-from image_processings.pick_obj_using_heuristic import pick_obj_using_heuristic
+from image_processings.pick_obj import (
+    pick_obj_using_entropy,
+    pick_obj_using_heuristic,
+    pick_obj_using_edge_gradient,
+)
 
 
 @dataclass(frozen=True)

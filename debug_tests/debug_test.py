@@ -15,8 +15,11 @@ from datasets.dataset import load_dataset
 from image_processings.image_pre_seg import change_image_type, image_i_segment
 from image_processings.info import Candidate, Info, PromptBundle
 from image_processings.mask_cluster import select_middle_cluster_entry
-from image_processings.pick_obj_using_entropy import pick_obj_using_entropy
-from image_processings.pick_obj_using_heuristic import pick_obj_using_heuristic
+from image_processings.pick_obj import (
+    pick_obj_using_entropy,
+    pick_obj_using_heuristic,
+    pick_obj_using_edge_gradient,
+)
 from metrics.metric import calculate_miou
 from metrics.visualize import show_combined_plots
 from sam2.build_sam import build_sam2
@@ -282,6 +285,12 @@ def run_unsupervised_segmentation(
     pool = info.get_mask_pool()
     if selection_strategy == "entropy":
         selected_entry, pool_stats, _ = pick_obj_using_entropy(
+            img_resized,
+            pool,
+            target_area_ratio=info.settings.target_area_ratio,
+        )
+    elif selection_strategy == "edge_gradient":
+        selected_entry, pool_stats, _ = pick_obj_using_edge_gradient(
             img_resized,
             pool,
             target_area_ratio=info.settings.target_area_ratio,

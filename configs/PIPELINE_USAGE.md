@@ -74,9 +74,10 @@ Controls the iterative prompt-promotion loop (`image_processings.info.Info`).
   stored mask pool before final selection.
 - `target_area_ratio` *(float)* – Target foreground ratio when scoring masks
   with the heuristic selector (entropy selector ignores it and only uses logits).
-- `selection_strategy` *("heuristic" | "entropy" | "cluster_middle")* – How the
-  final mask is chosen: heuristic scoring, entropy minimisation, or cluster-based
-  re-ranking (`mask_cluster.select_middle_cluster_entry` uses the current pool).
+- `selection_strategy` *("heuristic" | "entropy" | "edge_gradient" | "cluster_middle")* – How the
+  final mask is chosen: heuristic scoring, entropy minimisation, edge-gradient
+  scoring on the probability boundary, or cluster-based re-ranking
+  (`mask_cluster.select_middle_cluster_entry` uses the current pool).
 
 ## `sam`
 
