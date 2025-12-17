@@ -1,0 +1,31 @@
+{
+  "top_k_masks": 3,
+  "inner_index": 0,
+  "outer_index": -1,
+  "tta_steps": 3,
+  "batch_size": 1,
+  "loss_weights": {
+    "anchor": 1.0,
+    "entropy": 0.1,
+    "consistency": 0.5,
+    "regularization": 0.0
+  },
+  "augment": {
+    "scales": [0.75, 1.0, 1.25],
+    "use_flip": true,
+    "views_per_step": 2
+  },
+  "optimizer": {
+    "lr": 1e-4,
+    "weight_decay": 0.0,
+    "max_grad_norm": 1.0
+  },
+  "lora": {
+    "target": "mask_decoder",
+    "rank": 4
+  },
+  "teacher_student": {
+    "use_ema": true,
+    "ema_momentum": 0.99
+  }
+}
