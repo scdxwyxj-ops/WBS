@@ -2,25 +2,28 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-MaskEntry = Dict[str, object]
+MaskEntry = Dict[str, Any]
 
 __all__ = ["pick_obj_using_entropy"]
 
 
-def _mask_entropy(mask: np.ndarray) -> Tuple[float, float]:
-    mask_bool = np.asarray(mask, dtype=bool)
-    total = mask_bool.size
-    if total == 0:
-        return 1.0, 0.0
+def _entry_entropy(entry: MaskEntry) -> Tuple[float, float]:
+    logits = entry.get("logits")
+    if logits is None:
+        return float("inf"), float("nan")
 
-    foreground_ratio = float(mask_bool.sum() / total)
-    p = np.clip(foreground_ratio, 1e-9, 1.0 - 1e-9)
-    entropy = float(-(p * np.log2(p) + (1.0 - p) * np.log2(1.0 - p)))
-    return entropy, foreground_ratio
+    logits_arr = np.asarray(logits, dtype=np.float32)
+    # sigmoid
+    probs = 1.0 / (1.0 + np.exp(-logits_arr))
+    probs = np.clip(probs, 1e-9, 1.0 - 1e-9)
+    entropy = -probs * np.log2(probs) - (1.0 - probs) * np.log2(1.0 - probs)
+    mean_entropy = float(np.mean(entropy))
+    mean_prob = float(np.mean(probs))
+    return mean_entropy, mean_prob
 
 
 def pick_obj_using_entropy(
@@ -40,7 +43,7 @@ def pick_obj_using_entropy(
     ratios: List[float] = []
 
     for entry in pool:
-        entropy, ratio = _mask_entropy(entry["mask"])
+        entropy, ratio = _entry_entropy(entry)
         entropies.append(entropy)
         ratios.append(ratio)
 

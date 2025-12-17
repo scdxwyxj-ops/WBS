@@ -64,7 +64,7 @@
   - `record_low_res_mask` caches the most recent SAM low-resolution mask for future rounds.
 - Mask pool / selection
   - Every SAM call is stored in `mask_pool`/`mask_pool_full` with mask/logits/prompts/score; pool is deduped by IoU via `mask_pool_iou_threshold`.
-  - Final selection can use heuristic scoring (`pick_obj_using_heuristic`: area, edge strength, circularity, convex quality, LAB bimodality) or entropy minimisation (`pick_obj_using_entropy`). When `selection_strategy=="cluster_middle"`, the highest-scoring mask within the middle area cluster from `mask_cluster.cluster_masks_by_area` is chosen.
+  - Final selection can use heuristic scoring (`pick_obj_using_heuristic`: area, edge strength, circularity, convex quality, LAB bimodality) or entropy minimisation (`pick_obj_using_entropy`, computed from logits → sigmoid → per-pixel entropy mean). When `selection_strategy=="cluster_middle"`, the highest-scoring mask within the middle area cluster from `mask_cluster.cluster_masks_by_area` is chosen.
   - Selection metadata and pool stats are recorded for downstream inspection.
 - Geometry utilities
   - `apply_selective_convex_hull`: per-connected-component convex hull drawing with ratio threshold (implements requirement §4.2 toggle).
@@ -92,7 +92,7 @@
 
 ## Mask Pool Scoring Helpers
 - `image_processings/pick_obj_using_heuristic.py`: extracts geometric/edge/color features for each mask vs the image, normalises across pool, and scores masks (area closeness to `target_area_ratio`, edge sharpness, circularity, convex quality, LAB bimodality).
-- `image_processings/pick_obj_using_entropy.py`: selects the mask with lowest binary entropy of foreground ratio.
+- `image_processings/pick_obj_using_entropy.py`: selects the mask with lowest mean per-pixel entropy computed from logits (sigmoid → entropy).
 - `image_processings/mask_cluster.py`: clusters masks by area ratio using KMeans with min/median/max seeds; `select_middle_cluster_entry` picks the top-scoring entry within the middle-area cluster.
 - `image_processings/image_post_process.py`: erosion → largest component → dilation filter (currently unused in main pipeline).
 
