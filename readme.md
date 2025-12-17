@@ -7,7 +7,7 @@
 
 ## Directory Guide
 - `debug_tests/` – runnable scripts (`debug_test.py` main, `run_full_experiment.py` batch runner, `calculate_foreground_ratio.py` stats helper), notebooks, smoke tests.
-- `image_processings/` – preprocessing (`image_pre_seg.py` + `simple_graph` fallback), prompt state machine (`info.py`), node definition, mask clustering/scoring (`mask_cluster.py`, `pick_obj.py`), post-processing (`image_post_process.py`), logging helpers.
+- `image_processings/` – preprocessing (`image_pre_seg.py` + `simple_graph` fallback), prompt state machine (`info.py`), node definition, mask clustering/scoring (`mask_cluster.py`, `pick_obj_using_heuristic.py`, `pick_obj_using_entropy.py`), post-processing (`image_post_process.py`), logging helpers.
 - `configs/` – dataclasses + loader for `pipeline.json`, usage notes.
 - `datasets/` – dataset loader utilities respecting `CONSTANT.json:data_path`.
 - `metrics/` – IoU/Dice/mAP calculators and visualisation helpers.
@@ -22,8 +22,8 @@
   - `dataset`: dataset folder name + optional `target_long_edge` resize.
   - `preprocessing`: `image_size`, graph node budget, and SLIC hyper-parameters.
   - `algorithm`: consumed by `image_processings.info.AlgorithmSettings`.
-    - Includes negative/positive prompt balance, threshold mode/value, candidate_top_k, convex hull toggle, point filtering window, initial color mode (`red` or `dark`), initial positive count, mask pool IoU dedup threshold, target area ratio for scoring, and `selection_strategy` (`pick_obj` or `cluster_middle`).
-  - `sam`: predictor settings (mask prompt strategy, multimask, refine-with-previous-low-res toggle + rounds).
+    - Includes negative/positive prompt balance, threshold mode/value, candidate_top_k, convex hull toggle, point filtering window, initial color mode (`red` or `dark`), initial positive count, mask pool IoU dedup threshold, target area ratio for scoring, and `selection_strategy` (`heuristic`, `entropy`, or `cluster_middle`).
+  - `sam`: predictor settings (`mask_prompt_source`, multimask, refine-with-previous-low-res toggle + rounds).
 - Legacy `image_processings/config.py` contains older hard-coded config dictionaries; current pipeline does not import it.
 
 ## Preprocessing (`image_processings/image_pre_seg.py`)
@@ -64,7 +64,7 @@
   - `record_low_res_mask` caches the most recent SAM low-resolution mask for future rounds.
 - Mask pool / selection
   - Every SAM call is stored in `mask_pool`/`mask_pool_full` with mask/logits/prompts/score; pool is deduped by IoU via `mask_pool_iou_threshold`.
-  - Final selection uses `pick_obj` scoring (area, edge strength, circularity, convex quality, color separation) against `target_area_ratio`. When `selection_strategy=="cluster_middle"`, the highest-scoring mask within the middle area cluster from `mask_cluster.cluster_masks_by_area` is chosen.
+  - Final selection can use heuristic scoring (`pick_obj_using_heuristic`: area, edge strength, circularity, convex quality, LAB bimodality) or entropy minimisation (`pick_obj_using_entropy`). When `selection_strategy=="cluster_middle"`, the highest-scoring mask within the middle area cluster from `mask_cluster.cluster_masks_by_area` is chosen.
   - Selection metadata and pool stats are recorded for downstream inspection.
 - Geometry utilities
   - `apply_selective_convex_hull`: per-connected-component convex hull drawing with ratio threshold (implements requirement §4.2 toggle).
@@ -86,12 +86,13 @@
   3. Run initial SAM2 prediction, log history and add to mask pool.
   4. Iterate up to `max_iterations`: update logits → fetch candidates → evaluate SAM2 for top-k → commit the best → push to mask pool.
   5. Optional refinement loop using previous low-res masks.
-  6. Deduplicate mask pool, score candidates via `pick_obj` (optionally re-ranked by `mask_cluster.select_middle_cluster_entry`), record selection metadata, and append a selection step to history.
+  6. Deduplicate mask pool, score candidates via `pick_obj_using_heuristic` (or entropy-based selection), optionally re-rank with `mask_cluster.select_middle_cluster_entry`, record selection metadata, and append a selection step to history.
   7. Return final mask, iteration history, resized image, and segments.
 - `main()` loads constants/config, constructs predictor, iterates over dataset images/masks, saves visualisations (`assets/unsupervised_debug/result_XXX.png`), and reports mIoU + failure cases.
 
 ## Mask Pool Scoring Helpers
-- `image_processings/pick_obj.py`: extracts geometric/edge/color features for each mask vs the image, normalises across pool, and scores masks (area closeness to `target_area_ratio`, edge sharpness, circularity, convex quality, LAB bimodality).
+- `image_processings/pick_obj_using_heuristic.py`: extracts geometric/edge/color features for each mask vs the image, normalises across pool, and scores masks (area closeness to `target_area_ratio`, edge sharpness, circularity, convex quality, LAB bimodality).
+- `image_processings/pick_obj_using_entropy.py`: selects the mask with lowest binary entropy of foreground ratio.
 - `image_processings/mask_cluster.py`: clusters masks by area ratio using KMeans with min/median/max seeds; `select_middle_cluster_entry` picks the top-scoring entry within the middle-area cluster.
 - `image_processings/image_post_process.py`: erosion → largest component → dilation filter (currently unused in main pipeline).
 
@@ -122,7 +123,7 @@
   - Candidate expansion (4.1) realised via `Info.get_candidates` and `_evaluate_candidates`, with `candidate_top_k` controlling how many neighbours to test.
   - Convex-hull augmentation (4.2) toggled by `algorithm.use_convex_hull`; centroid-based extra prompt added during `Info.build_prompts`.
   - Prompt/mask packaging (4.3) handled inside `Info.build_prompts` + `_select_mask_input`, aligning with `sam.mask_prompt_source` (`slic`, `previous_low_res`, `none`).
-  - Final selection now ranks the deduped mask pool via `pick_obj` and optional area clustering (`selection_strategy`).
+  - Final selection now ranks the deduped mask pool via heuristic or entropy scoring (`selection_strategy`) and optional area clustering.
 - Hyper-parameters for these behaviours live in `pipeline.json` for experimentation.
 
 ## Quickstart

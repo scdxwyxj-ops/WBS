@@ -13,6 +13,8 @@ from scipy.ndimage import binary_fill_holes
 
 from configs.pipeline_config import AlgorithmConfig as PipelineAlgorithmConfig
 from image_processings.node import Node
+from image_processings.pick_obj_using_entropy import pick_obj_using_entropy
+from image_processings.pick_obj_using_heuristic import pick_obj_using_heuristic
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,7 @@ class AlgorithmSettings:
     target_area_ratio: float = 0.05
     initial_color_mode: str = "dark"
     initial_positive_count: int = 1
-    selection_strategy: str = "pick_obj"
+    selection_strategy: str = "heuristic"
 
     @classmethod
     def from_pipeline_config(
@@ -63,7 +65,7 @@ class AlgorithmSettings:
             target_area_ratio=config.target_area_ratio,
             initial_color_mode=config.initial_color_mode,
             initial_positive_count=config.initial_positive_count,
-            selection_strategy=getattr(config, "selection_strategy", "pick_obj"),
+            selection_strategy=getattr(config, "selection_strategy", "heuristic"),
         )
 
 
@@ -97,6 +99,7 @@ class Info:
         settings: Optional[PipelineAlgorithmConfig] = None,
         debug_mode: bool = True,
         mask_prompt_source: Optional[str] = None,
+        **legacy_kwargs: Any,
     ) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.logger.setLevel(logging.DEBUG if debug_mode else logging.WARNING)
@@ -111,6 +114,9 @@ class Info:
             self.logger.propagate = False
 
         self.settings = AlgorithmSettings.from_pipeline_config(settings, mask_prompt_source=mask_prompt_source)
+        legacy_negative = legacy_kwargs.pop("negative_pct", None)
+        if legacy_negative is not None:
+            self.settings.negative_pct = float(legacy_negative)
         self.segment_indices, self.segment_ids = self._normalise_segments(segment)
         self.image = image
         self.graph = graph

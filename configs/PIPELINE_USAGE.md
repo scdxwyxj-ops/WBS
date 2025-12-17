@@ -73,10 +73,10 @@ Controls the iterative prompt-promotion loop (`image_processings.info.Info`).
 - `mask_pool_iou_threshold` *(float)* – IoU threshold used to deduplicate the
   stored mask pool before final selection.
 - `target_area_ratio` *(float)* – Target foreground ratio when scoring masks
-  with `pick_obj`.
-- `selection_strategy` *("pick_obj" | "cluster_middle")* – How the final mask is
-  chosen from the pool: direct score ranking vs. ranking within the middle-area
-  cluster (`mask_cluster.select_middle_cluster_entry`).
+  with the heuristic selector.
+- `selection_strategy` *("heuristic" | "entropy" | "cluster_middle")* – How the
+  final mask is chosen: heuristic scoring, entropy minimisation, or cluster-based
+  re-ranking (`mask_cluster.select_middle_cluster_entry` uses the current pool).
 
 ## `sam`
 

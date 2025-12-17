@@ -52,7 +52,7 @@ class AlgorithmConfig:
     target_area_ratio: float
     initial_color_mode: str
     initial_positive_count: int
-    selection_strategy: str = "pick_obj"
+    selection_strategy: str = "heuristic"
 
 
 @dataclass(frozen=True)
@@ -119,7 +119,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         target_area_ratio=float(data["algorithm"]["target_area_ratio"]),
         initial_color_mode=str(data["algorithm"].get("initial_color_mode", "dark")),
         initial_positive_count=int(data["algorithm"].get("initial_positive_count", 1)),
-        selection_strategy=str(data["algorithm"].get("selection_strategy", "pick_obj")),
+        selection_strategy=str(data["algorithm"].get("selection_strategy", "heuristic")),
     )
 
     sam_cfg = SAMConfig(
