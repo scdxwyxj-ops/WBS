@@ -17,8 +17,11 @@ def _entry_entropy(entry: MaskEntry) -> Tuple[float, float]:
         return float("inf"), float("nan")
 
     logits_arr = np.asarray(logits, dtype=np.float32)
-    # sigmoid
-    probs = 1.0 / (1.0 + np.exp(-logits_arr))
+    # Two-class softmax: foreground logit vs. implicit background logit = 0
+    max_term = np.maximum(0.0, logits_arr)
+    exp_fg = np.exp(logits_arr - max_term)
+    exp_bg = np.exp(0.0 - max_term)
+    probs = exp_fg / (exp_fg + exp_bg + 1e-9)
     probs = np.clip(probs, 1e-9, 1.0 - 1e-9)
     entropy = -probs * np.log2(probs) - (1.0 - probs) * np.log2(1.0 - probs)
     mean_entropy = float(np.mean(entropy))
