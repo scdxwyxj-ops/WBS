@@ -11,3 +11,9 @@ codex.md
 CONSTANT.json
 
 SAM-TTA/
+
+# Caches
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.cache/
