@@ -1,4 +1,4 @@
-# Codex Notes for WBS
+# Notes for WBS
 
 ## Overview
 - Unsupervised white blood cell segmentation around SAM2 prompt refinement with a scored mask pool and optional clustering for final selection.
@@ -124,3 +124,27 @@
   - Prompt/mask packaging (4.3) handled inside `Info.build_prompts` + `_select_mask_input`, aligning with `sam.mask_prompt_source` (`slic`, `previous_low_res`, `none`).
   - Final selection now ranks the deduped mask pool via `pick_obj` and optional area clustering (`selection_strategy`).
 - Hyper-parameters for these behaviours live in `pipeline.json` for experimentation.
+
+## Quickstart
+- Install dependencies (requires SAM2 code in sibling `sam2/`): ensure Python env has `torch`, `opencv-python`, `networkx` (optional), `scikit-image`, `scikit-learn`, `tqdm`, `einops`, `Pillow`.
+- Configure `CONSTANT.json` with your `data_path`, `checkpoint`, `model_cfg`, and the active `pipeline_cfg`.
+- Run a single-pass debug loop: `python debug_tests/debug_test.py`.
+- Run full evaluation across predefined datasets: `python debug_tests/run_full_experiment.py` (saves results under `assets/experiment_*/`).
+- Inspect foreground ratios: `python debug_tests/calculate_foreground_ratio.py --datasets cropped dataset_v0 original`.
+
+## Mask Prompt Modes (single switch)
+- Set `sam.mask_prompt_source` in `configs/pipeline.json`:
+  - `slic`: use the foreground mask built from promoted SLIC segments (convex hull optional) as `mask_input`.
+  - `previous_low_res`: reuse the last low-res mask returned by SAM.
+  - `none`: disable mask prompting.
+  - No separate algorithm flag is needed; SLIC mask generation is implied only when `mask_prompt_source="slic"`.
+
+## Common Tuning Knobs
+- `candidate_top_k`, `score_lower_bound`: balance exploration vs. confidence for node promotion.
+- `use_convex_hull`, `augment_positive_points`, `use_subset_points`: toggle geometry smoothing and prompt sparsification.
+- `initial_color_mode`, `initial_positive_count`, `negative_pct`: control seed prompts.
+- `target_area_ratio`, `selection_strategy`: influence final mask scoring and clustering.
+
+## Outputs
+- Debug runs: `assets/unsupervised_debug/result_XXX.png`.
+- Experiments: `assets/experiment_*/overall_summary.json`, per-dataset summaries, worst-case histories (prompts/logits/masks), and config snapshots.
