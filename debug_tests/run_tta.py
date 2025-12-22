@@ -418,6 +418,7 @@ def main() -> None:
 
     predictions: List[np.ndarray] = []
     adapted: List[np.ndarray] = []
+    aligned_gt_masks: List[np.ndarray] = []
     metrics_before: List[Dict[str, float]] = []
     metrics_after: List[Dict[str, float]] = []
 
@@ -442,12 +443,17 @@ def main() -> None:
         # Metrics before TTA
         gt_aligned = gt_mask
         if gt_mask.shape != base_mask.shape:
-            gt_aligned = cv2.resize(gt_mask.astype(np.uint8), (base_mask.shape[1], base_mask.shape[0]), interpolation=cv2.INTER_NEAREST) > 0
+            gt_aligned = cv2.resize(
+                gt_mask.astype(np.uint8),
+                (base_mask.shape[1], base_mask.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            ) > 0
         inter = np.logical_and(base_mask, gt_aligned).sum()
         union = np.logical_or(base_mask, gt_aligned).sum()
         iou_before = float(inter / union) if union else 1.0
         dice_before = float(2 * inter / (base_mask.sum() + gt_aligned.sum())) if (base_mask.sum() + gt_aligned.sum()) else 1.0
         metrics_before.append({"file": name, "iou": iou_before, "dice": dice_before})
+        aligned_gt_masks.append(gt_aligned)
 
         # Prepare prompts for TTA (use final prompts from last history step)
         final_prompts = history[-1].prompts
@@ -543,12 +549,12 @@ def main() -> None:
             handle.write(log_line + "\n")
             handle.flush()
 
-    miou_before, _ = calculate_miou(predictions, gt_masks)
-    miou_after, _ = calculate_miou(adapted, gt_masks)
-    dice_before_mean, _ = calculate_dice(predictions, gt_masks)
-    dice_after_mean, _ = calculate_dice(adapted, gt_masks)
-    map_before, _ = calculate_map(predictions, gt_masks)
-    map_after, _ = calculate_map(adapted, gt_masks)
+    miou_before, _ = calculate_miou(predictions, aligned_gt_masks)
+    miou_after, _ = calculate_miou(adapted, aligned_gt_masks)
+    dice_before_mean, _ = calculate_dice(predictions, aligned_gt_masks)
+    dice_after_mean, _ = calculate_dice(adapted, aligned_gt_masks)
+    map_before, _ = calculate_map(predictions, aligned_gt_masks)
+    map_after, _ = calculate_map(adapted, aligned_gt_masks)
 
     print("\n=== Summary ===")
     print(f"Before TTA: mIoU={miou_before:.4f}, Dice={dice_before_mean:.4f}, mAP={map_before:.4f}")
