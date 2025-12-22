@@ -102,6 +102,9 @@ def _soft_dice(a: Array, b: Array, weight: Optional[Array] = None) -> float:
     if _is_torch(a) or _is_torch(b):
         a_t = a if _is_torch(a) else torch.as_tensor(a)
         b_t = b if _is_torch(b) else torch.as_tensor(b, device=a_t.device)
+        if a_t.shape != b_t.shape:
+            b_t = F.interpolate(_ensure_4d(b_t), size=a_t.shape[-2:], mode="bilinear", align_corners=False)
+            b_t = b_t.squeeze(0).squeeze(0) if a_t.ndim == 2 else b_t.squeeze(0)
         if weight is None:
             weight_t = torch.ones_like(a_t)
         else:
