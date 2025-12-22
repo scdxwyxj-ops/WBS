@@ -397,7 +397,8 @@ def main() -> None:
                     "multimask_output": pipeline_cfg.sam.multimask_output,
                 },
                 loss_weights=tta_loss_weights,
-                top_k=int(tta_cfg.get("top_k_masks", 3)),
+                selection_strategy=tta_cfg.get("pseudo_label", {}).get("strategy", "score_top_k"),
+                top_k=int(tta_cfg.get("pseudo_label", {}).get("top_k_masks", 3)),
                 augment_fn=augment_fn,
                 optimizer_step_fn=None,  # hook for real LoRA training
             )

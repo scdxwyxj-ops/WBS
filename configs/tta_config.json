@@ -1,9 +1,10 @@
 {
-  "top_k_masks": 3,
-  "inner_index": 0,
-  "outer_index": -1,
   "tta_steps": 3,
   "batch_size": 1,
+  "pseudo_label": {
+    "strategy": "score_top_k",
+    "top_k_masks": 3
+  },
   "loss_weights": {
     "anchor": 1.0,
     "entropy": 0.1,
