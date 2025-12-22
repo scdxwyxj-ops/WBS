@@ -23,7 +23,10 @@
   },
   "lora": {
     "target": "mask_decoder",
-    "rank": 4
+    "rank": 4,
+    "alpha": 8,
+    "dropout": 0.0,
+    "target_modules": ["q_proj", "k_proj", "v_proj", "out_proj"]
   },
   "teacher_student": {
     "use_ema": true,

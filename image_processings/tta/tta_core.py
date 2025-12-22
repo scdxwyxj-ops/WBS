@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
 
 import numpy as np
 from skimage import transform, segmentation
 
 
 Array = np.ndarray
+
+try:  # optional torch support
+    import torch
+except ImportError:  # pragma: no cover
+    torch = None  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -28,31 +33,73 @@ class TTAStepOutputs:
     student_logits_aug: Optional[Array]
     student_probs_aug: Optional[Array]
     losses: Dict[str, float]
+    total_loss_tensor: Optional[Any]
 
 
-def _binary_cross_entropy(pred: Array, target: Array) -> float:
-    pred = np.clip(pred, 1e-6, 1.0 - 1e-6)
-    target = np.clip(target, 0.0, 1.0)
-    loss = -(target * np.log(pred) + (1.0 - target) * np.log(1.0 - pred))
+def _is_torch(x: Any) -> bool:
+    return torch is not None and isinstance(x, torch.Tensor)
+
+
+def _binary_cross_entropy(pred: Array, target: Array):
+    if _is_torch(pred):
+        pred_t = pred.clamp(1e-6, 1.0 - 1e-6)
+        target_t = target
+        loss = -(target_t * torch.log(pred_t) + (1.0 - target_t) * torch.log(1.0 - pred_t))
+        return loss.mean()
+    pred_np = np.clip(pred, 1e-6, 1.0 - 1e-6)
+    target_np = np.clip(target, 0.0, 1.0)
+    loss = -(target_np * np.log(pred_np) + (1.0 - target_np) * np.log(1.0 - pred_np))
     return float(np.mean(loss))
 
 
 def compute_supervision_loss(probs: Array, pseudo_mask: Array) -> float:
+    if _is_torch(probs):
+        target = torch.as_tensor(pseudo_mask, device=probs.device, dtype=probs.dtype)
+        if target.shape != probs.shape:
+            target = target.unsqueeze(0).unsqueeze(0) if target.ndim == 2 else target.unsqueeze(0)
+            target = torch.nn.functional.interpolate(
+                target,
+                size=probs.shape[-2:],
+                mode="nearest",
+            )
+            if probs.ndim == 2:
+                target = target.squeeze(0).squeeze(0)
+            else:
+                target = target.squeeze(0)
+        return _binary_cross_entropy(probs, target)
     target = np.asarray(pseudo_mask, dtype=float)
+    if target.shape != probs.shape:
+        target = transform.resize(target, probs.shape, preserve_range=True, order=0, anti_aliasing=False)
     return _binary_cross_entropy(probs, target)
 
 
 def compute_entropy_loss(probs: Array) -> float:
+    if _is_torch(probs):
+        p = probs.clamp(1e-6, 1.0 - 1e-6)
+        entropy = -p * torch.log(p) - (1.0 - p) * torch.log(1.0 - p)
+        return entropy.mean()
     p = np.clip(probs, 1e-6, 1.0 - 1e-6)
     entropy = -p * np.log(p) - (1.0 - p) * np.log(1.0 - p)
     return float(np.mean(entropy))
 
 
 def _sigmoid(logits: Array) -> Array:
+    if _is_torch(logits):
+        return torch.sigmoid(logits)
     return 1.0 / (1.0 + np.exp(-logits))
 
 
 def _soft_dice(a: Array, b: Array, weight: Optional[Array] = None) -> float:
+    if _is_torch(a) or _is_torch(b):
+        a_t = a if _is_torch(a) else torch.as_tensor(a)
+        b_t = b if _is_torch(b) else torch.as_tensor(b, device=a_t.device)
+        if weight is None:
+            weight_t = torch.ones_like(a_t)
+        else:
+            weight_t = weight if _is_torch(weight) else torch.as_tensor(weight, device=a_t.device)
+        intersect = torch.sum(weight_t * a_t * b_t)
+        denom = torch.sum(weight_t * a_t) + torch.sum(weight_t * b_t) + 1e-6
+        return 2.0 * intersect / denom
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     if weight is None:
@@ -71,16 +118,51 @@ class TTAPipeline:
         *,
         loss_weights: Optional[TTALossWeights] = None,
         augment_fn: Optional[Callable[[Array], Sequence[Tuple[Array, Callable[[Array], Array]]]]] = None,
-        optimizer_step_fn: Optional[Callable[[Dict[str, float]], None]] = None,
+        optimizer_step_fn: Optional[Callable[[Any, Dict[str, float]], None]] = None,
     ) -> None:
         self.predictor = predictor
         self.loss_weights = loss_weights or TTALossWeights()
         self.augment_fn = augment_fn
         self.optimizer_step_fn = optimizer_step_fn
+        self._train_with_grad = optimizer_step_fn is not None and torch is not None
 
     def _predict_probs(self, image: Array, prompts: Dict) -> Tuple[Array, Array]:
+        if self._train_with_grad and hasattr(self.predictor, "model"):
+            return self._predict_probs_with_grad(image, prompts)
         logits, _, _ = self.predictor.predict(**prompts, return_logits=True)
-        logits = np.asarray(logits[0])
+        logits = logits[0]
+        if not _is_torch(logits):
+            logits = np.asarray(logits)
+        return logits, _sigmoid(logits)
+
+    def _predict_probs_with_grad(self, image: Array, prompts: Dict) -> Tuple[Array, Array]:
+        """Run SAM2 mask decoder forward with gradients (decoder-only training)."""
+        self.predictor.set_image(image)
+        mask_input, unnorm_coords, labels, unnorm_box = self.predictor._prep_prompts(
+            prompts.get("point_coords"),
+            prompts.get("point_labels"),
+            prompts.get("box"),
+            prompts.get("mask_input"),
+            normalize_coords=True,
+        )
+        point_inputs = None
+        if unnorm_coords is not None and labels is not None:
+            point_inputs = {
+                "point_coords": unnorm_coords,
+                "point_labels": labels,
+            }
+        features = self.predictor._features["image_embed"]
+        high_res_feats = self.predictor._features["high_res_feats"]
+        low_res_multimasks, high_res_multimasks, ious, low_res_masks, high_res_masks, obj_ptr, _ = (
+            self.predictor.model._forward_sam_heads(
+                backbone_features=features,
+                point_inputs=point_inputs,
+                mask_inputs=mask_input,
+                high_res_features=high_res_feats,
+                multimask_output=prompts.get("multimask_output", False),
+            )
+        )
+        logits = high_res_masks[:, 0]
         return logits, _sigmoid(logits)
 
     def step(
@@ -113,18 +195,21 @@ class TTAPipeline:
                     aligned = align_back(pr_aug)
                     cons_losses.append(1.0 - _soft_dice(base_prob, aligned))
                 if cons_losses:
-                    loss_cons = float(np.mean(cons_losses)) * self.loss_weights.consistency
+                    if _is_torch(cons_losses[0]):
+                        loss_cons = torch.stack(cons_losses).mean() * self.loss_weights.consistency
+                    else:
+                        loss_cons = float(np.mean(cons_losses)) * self.loss_weights.consistency
 
         total_loss = loss_sup + loss_entropy + loss_cons
         losses = {
-            "supervision": loss_sup,
-            "entropy": loss_entropy,
-            "consistency": loss_cons,
-            "total": total_loss,
+            "supervision": float(loss_sup.detach().cpu()) if _is_torch(loss_sup) else float(loss_sup),
+            "entropy": float(loss_entropy.detach().cpu()) if _is_torch(loss_entropy) else float(loss_entropy),
+            "consistency": float(loss_cons.detach().cpu()) if _is_torch(loss_cons) else float(loss_cons),
+            "total": float(total_loss.detach().cpu()) if _is_torch(total_loss) else float(total_loss),
         }
 
         if self.optimizer_step_fn is not None:
-            self.optimizer_step_fn(losses)
+            self.optimizer_step_fn(total_loss, losses)
 
         return TTAStepOutputs(
             pseudo_mask=np.asarray(pseudo_mask, dtype=bool),
@@ -133,6 +218,7 @@ class TTAPipeline:
             student_logits_aug=logits_aug,
             student_probs_aug=probs_aug,
             losses=losses,
+            total_loss_tensor=total_loss if _is_torch(total_loss) else None,
         )
 
 

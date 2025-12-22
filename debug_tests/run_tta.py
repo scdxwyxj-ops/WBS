@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import cv2
 from tqdm import tqdm
+
+import torch
+import torch.nn as nn
 
 from configs.pipeline_config import PipelineConfig, load_pipeline_config
 from datasets.dataset import load_dataset
@@ -21,7 +25,12 @@ from image_processings.pick_obj import (
     pick_obj_using_heuristic,
     pick_obj_using_edge_gradient,
 )
-from image_processings.tta import TTALossWeights, run_tta_from_pool, default_multi_view_augment
+from image_processings.tta import (
+    TTALossWeights,
+    run_tta_from_pool,
+    default_multi_view_augment,
+    apply_lora_to_mask_decoder,
+)
 from metrics.metric import calculate_miou, calculate_dice, calculate_map
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -32,6 +41,23 @@ CONSTANTS_PATH = MAIN_DIR / "CONSTANT.json"
 
 def _load_constants() -> dict:
     return json.loads(CONSTANTS_PATH.read_text(encoding="utf-8"))
+
+
+def _ensure_output_dir() -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = MAIN_DIR / "assets" / f"tta_experiment_{timestamp}"
+    out_dir.mkdir(parents=True, exist_ok=False)
+    return out_dir
+
+
+def _save_config_snapshot(output_dir: Path, constants: Dict, pipeline_cfg: PipelineConfig, tta_cfg: Dict) -> None:
+    snapshot = {
+        "timestamp": datetime.now().isoformat(),
+        "constants": constants,
+        "pipeline_config": json.loads((MAIN_DIR / constants["pipeline_cfg"]).read_text(encoding="utf-8")),
+        "tta_config": tta_cfg,
+    }
+    (output_dir / "config_snapshot.json").write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
 
 
 def _ensure_uint8_image(image: np.ndarray) -> np.ndarray:
@@ -336,7 +362,34 @@ def main() -> None:
     pipeline_cfg = load_pipeline_config(MAIN_DIR / constants["pipeline_cfg"])
     tta_cfg = load_tta_config(MAIN_DIR / "configs" / "tta_config.json")
 
-    predictor = SAM2ImagePredictor(build_sam2(constants["model_cfg"], constants["checkpoint"]))
+    output_dir = _ensure_output_dir()
+    _save_config_snapshot(output_dir, constants, pipeline_cfg, tta_cfg)
+
+    model = build_sam2(constants["model_cfg"], constants["checkpoint"])
+    lora_cfg = tta_cfg.get("lora", {})
+    if lora_cfg.get("target") == "mask_decoder":
+        apply_lora_to_mask_decoder(
+            model,
+            r=int(lora_cfg.get("rank", 4)),
+            lora_alpha=int(lora_cfg.get("alpha", 8)),
+            lora_dropout=float(lora_cfg.get("dropout", 0.0)),
+            target_modules=lora_cfg.get("target_modules"),
+        )
+    predictor = SAM2ImagePredictor(model)
+    model.train()
+
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = None
+    if trainable_params:
+        opt_cfg = tta_cfg.get("optimizer", {})
+        optimizer = torch.optim.AdamW(
+            trainable_params,
+            lr=float(opt_cfg.get("lr", 1e-4)),
+            weight_decay=float(opt_cfg.get("weight_decay", 0.0)),
+        )
+        max_grad_norm = float(opt_cfg.get("max_grad_norm", 1.0))
+    else:
+        max_grad_norm = 0.0
 
     datasets = [pipeline_cfg.dataset.name]
     images, gt_masks, image_names = load_dataset(
@@ -350,6 +403,10 @@ def main() -> None:
     adapted: List[np.ndarray] = []
     metrics_before: List[Dict[str, float]] = []
     metrics_after: List[Dict[str, float]] = []
+
+    log_lines: List[str] = []
+    per_image_metrics: List[Dict[str, float]] = []
+    per_image_losses: List[Dict[str, float]] = []
 
     for idx in tqdm(range(len(images)), desc="TTA", unit="img"):
         image = images[idx]
@@ -383,7 +440,19 @@ def main() -> None:
         )
 
         # Run TTA steps (no-op optimizer placeholder)
+        def _optimizer_step(total_loss, _losses):
+            if optimizer is None:
+                return
+            if not isinstance(total_loss, torch.Tensor) or not total_loss.requires_grad:
+                return
+            optimizer.zero_grad(set_to_none=True)
+            total_loss.backward()
+            if max_grad_norm > 0:
+                nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
+            optimizer.step()
+
         tta_out = None
+        last_losses: Optional[Dict[str, float]] = None
         for _ in range(int(tta_cfg.get("tta_steps", 1))):
             tta_out = run_tta_from_pool(
                 predictor,
@@ -400,8 +469,10 @@ def main() -> None:
                 selection_strategy=tta_cfg.get("pseudo_label", {}).get("strategy", "score_top_k"),
                 top_k=int(tta_cfg.get("pseudo_label", {}).get("top_k_masks", 3)),
                 augment_fn=augment_fn,
-                optimizer_step_fn=None,  # hook for real LoRA training
+                optimizer_step_fn=_optimizer_step,
             )
+            if tta_out is not None:
+                last_losses = dict(tta_out["tta_outputs"].losses)
 
         if tta_out is not None:
             prob_map = tta_out["tta_outputs"].student_probs
@@ -415,6 +486,22 @@ def main() -> None:
         iou_after = float(inter_a / union_a) if union_a else 1.0
         dice_after = float(2 * inter_a / (adapted_mask.sum() + gt_aligned.sum())) if (adapted_mask.sum() + gt_aligned.sum()) else 1.0
         metrics_after.append({"file": name, "iou": iou_after, "dice": dice_after})
+        per_image_metrics.append(
+            {
+                "file": name,
+                "iou_before": iou_before,
+                "dice_before": dice_before,
+                "iou_after": iou_after,
+                "dice_after": dice_after,
+            }
+        )
+        if last_losses is not None:
+            per_image_losses.append({"file": name, **last_losses})
+
+        log_lines.append(
+            f"{name} | before IoU={iou_before:.4f} Dice={dice_before:.4f} | "
+            f"after IoU={iou_after:.4f} Dice={dice_after:.4f}"
+        )
 
     miou_before, _ = calculate_miou(predictions, gt_masks)
     miou_after, _ = calculate_miou(adapted, gt_masks)
@@ -426,6 +513,21 @@ def main() -> None:
     print("\n=== Summary ===")
     print(f"Before TTA: mIoU={miou_before:.4f}, Dice={dice_before_mean:.4f}, mAP={map_before:.4f}")
     print(f"After  TTA: mIoU={miou_after:.4f}, Dice={dice_after_mean:.4f}, mAP={map_after:.4f}")
+
+    summary = {
+        "num_samples": len(images),
+        "miou_before": float(miou_before),
+        "miou_after": float(miou_after),
+        "dice_before": float(dice_before_mean),
+        "dice_after": float(dice_after_mean),
+        "map_before": float(map_before),
+        "map_after": float(map_after),
+    }
+    (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (output_dir / "per_image_metrics.json").write_text(json.dumps(per_image_metrics, indent=2), encoding="utf-8")
+    (output_dir / "per_image_losses.json").write_text(json.dumps(per_image_losses, indent=2), encoding="utf-8")
+    (output_dir / "train.log").write_text("\n".join(log_lines), encoding="utf-8")
+    print(f"\nResults saved to: {output_dir}")
 
 
 if __name__ == "__main__":
