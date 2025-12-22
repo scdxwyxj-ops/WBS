@@ -493,6 +493,8 @@ def main() -> None:
 
         if tta_out is not None:
             prob_map = tta_out["tta_outputs"].student_probs
+            if isinstance(prob_map, torch.Tensor):
+                prob_map = prob_map.detach().cpu().numpy()
             adapted_mask = prob_map > 0.5
         else:
             adapted_mask = base_mask
