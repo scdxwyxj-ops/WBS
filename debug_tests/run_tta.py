@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 
 import sys
+import os
 
 # Ensure project root is on PYTHONPATH when running from subdirs.
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -54,6 +55,11 @@ def _load_constants() -> dict:
 
 
 def _ensure_output_dir() -> Path:
+    override = os.environ.get("TTA_OUTPUT_DIR")
+    if override:
+        out_dir = Path(override)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return out_dir
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = MAIN_DIR / "assets" / f"tta_experiment_{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=False)
