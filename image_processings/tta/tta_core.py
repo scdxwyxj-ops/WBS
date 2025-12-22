@@ -90,6 +90,14 @@ def _sigmoid(logits: Array) -> Array:
     return 1.0 / (1.0 + np.exp(-logits))
 
 
+def _ensure_4d(t: torch.Tensor) -> torch.Tensor:
+    if t.ndim == 2:
+        return t.unsqueeze(0).unsqueeze(0)
+    if t.ndim == 3:
+        return t.unsqueeze(1) if t.shape[0] != 1 else t.unsqueeze(0)
+    return t
+
+
 def _soft_dice(a: Array, b: Array, weight: Optional[Array] = None) -> float:
     if _is_torch(a) or _is_torch(b):
         a_t = a if _is_torch(a) else torch.as_tensor(a)
@@ -247,16 +255,9 @@ def default_multi_view_augment(
             def _align_back_factory(target_shape):
                 def _align(arr: Array) -> Array:
                     if _is_torch(arr):
-                        arr_t = arr.unsqueeze(0) if arr.ndim == 2 else arr
-                        out = F.interpolate(
-                            arr_t,
-                            size=target_shape,
-                            mode="bilinear",
-                            align_corners=False,
-                        )
-                        if arr.ndim == 2:
-                            out = out.squeeze(0)
-                        return out
+                        arr_t = _ensure_4d(arr)
+                        out = F.interpolate(arr_t, size=target_shape, mode="bilinear", align_corners=False)
+                        return out.squeeze(0).squeeze(0)
                     return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
                 return _align
 
@@ -272,16 +273,9 @@ def default_multi_view_augment(
                     def _align(arr: Array) -> Array:
                         if _is_torch(arr):
                             arr = torch.flip(arr, dims=[-1])
-                            arr_t = arr.unsqueeze(0) if arr.ndim == 2 else arr
-                            out = F.interpolate(
-                                arr_t,
-                                size=target_shape,
-                                mode="bilinear",
-                                align_corners=False,
-                            )
-                            if arr.ndim == 2:
-                                out = out.squeeze(0)
-                            return out
+                            arr_t = _ensure_4d(arr)
+                            out = F.interpolate(arr_t, size=target_shape, mode="bilinear", align_corners=False)
+                            return out.squeeze(0).squeeze(0)
                         arr = np.flip(arr, axis=1)
                         return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
                     return _align
