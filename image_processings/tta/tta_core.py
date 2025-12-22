@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
 
 import numpy as np
 from skimage import transform, segmentation
+import torch.nn.functional as F
 
 
 Array = np.ndarray
@@ -231,25 +232,64 @@ def default_multi_view_augment(
         candidates: List[Tuple[Array, Callable[[Array], Array]]] = []
         for s in scales:
             new_h, new_w = int(h * s), int(w * s)
-            img_resized = transform.resize(image, (new_h, new_w), preserve_range=True, anti_aliasing=True)
+            if _is_torch(image):
+                img_resized = F.interpolate(
+                    image.unsqueeze(0) if image.ndim == 3 else image,
+                    size=(new_h, new_w),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                if image.ndim == 3:
+                    img_resized = img_resized.squeeze(0)
+            else:
+                img_resized = transform.resize(image, (new_h, new_w), preserve_range=True, anti_aliasing=True)
 
             def _align_back_factory(target_shape):
                 def _align(arr: Array) -> Array:
+                    if _is_torch(arr):
+                        arr_t = arr.unsqueeze(0) if arr.ndim == 2 else arr
+                        out = F.interpolate(
+                            arr_t,
+                            size=target_shape,
+                            mode="bilinear",
+                            align_corners=False,
+                        )
+                        if arr.ndim == 2:
+                            out = out.squeeze(0)
+                        return out
                     return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
                 return _align
 
-            candidates.append((img_resized.astype(image.dtype), _align_back_factory((h, w))))
+            if _is_torch(img_resized):
+                candidates.append((img_resized, _align_back_factory((h, w))))
+            else:
+                candidates.append((img_resized.astype(image.dtype), _align_back_factory((h, w))))
 
             if do_flip:
-                flipped = np.flip(img_resized, axis=1)
+                flipped = torch.flip(img_resized, dims=[-1]) if _is_torch(img_resized) else np.flip(img_resized, axis=1)
 
                 def _align_back_flip(target_shape):
                     def _align(arr: Array) -> Array:
+                        if _is_torch(arr):
+                            arr = torch.flip(arr, dims=[-1])
+                            arr_t = arr.unsqueeze(0) if arr.ndim == 2 else arr
+                            out = F.interpolate(
+                                arr_t,
+                                size=target_shape,
+                                mode="bilinear",
+                                align_corners=False,
+                            )
+                            if arr.ndim == 2:
+                                out = out.squeeze(0)
+                            return out
                         arr = np.flip(arr, axis=1)
                         return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
                     return _align
 
-                candidates.append((flipped.astype(image.dtype), _align_back_flip((h, w))))
+                if _is_torch(img_resized):
+                    candidates.append((flipped, _align_back_flip((h, w))))
+                else:
+                    candidates.append((flipped.astype(image.dtype), _align_back_flip((h, w))))
 
         # sample up to 2 views per step (deterministic order)
         return candidates[:2]
