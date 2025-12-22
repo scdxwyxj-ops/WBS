@@ -79,4 +79,7 @@ def apply_lora_to_mask_decoder(
     if not replaced:
         raise ValueError("No target modules matched for LoRA injection.")
 
+    # Ensure LoRA params live on the same device as the decoder.
+    decoder_device = next(decoder.parameters()).device
+    decoder.to(decoder_device)
     return replaced

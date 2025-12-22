@@ -375,7 +375,8 @@ def main() -> None:
     output_dir = _ensure_output_dir()
     _save_config_snapshot(output_dir, constants, pipeline_cfg, tta_cfg)
 
-    model = build_sam2(constants["model_cfg"], constants["checkpoint"])
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = build_sam2(constants["model_cfg"], constants["checkpoint"], device=device)
     lora_cfg = tta_cfg.get("lora", {})
     injected_modules: List[str] = []
     if lora_cfg.get("target") == "mask_decoder":
@@ -387,6 +388,7 @@ def main() -> None:
             target_modules=lora_cfg.get("target_modules"),
         )
     predictor = SAM2ImagePredictor(model)
+    predictor.model.to(device)
     model.train()
 
     trainable_params = [p for p in model.parameters() if p.requires_grad]
