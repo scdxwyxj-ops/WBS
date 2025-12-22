@@ -377,8 +377,9 @@ def main() -> None:
 
     model = build_sam2(constants["model_cfg"], constants["checkpoint"])
     lora_cfg = tta_cfg.get("lora", {})
+    injected_modules: List[str] = []
     if lora_cfg.get("target") == "mask_decoder":
-        apply_lora_to_mask_decoder(
+        injected_modules = apply_lora_to_mask_decoder(
             model,
             r=int(lora_cfg.get("rank", 4)),
             lora_alpha=int(lora_cfg.get("alpha", 8)),
@@ -417,6 +418,10 @@ def main() -> None:
     log_lines: List[str] = []
     per_image_metrics: List[Dict[str, float]] = []
     per_image_losses: List[Dict[str, float]] = []
+
+    log_lines.append("=== LoRA Injection ===")
+    log_lines.append(f"Injected modules: {injected_modules}")
+    log_lines.append(f"Trainable params: {sum(p.numel() for p in trainable_params)}")
 
     for idx in tqdm(range(len(images)), desc="TTA", unit="img"):
         image = images[idx]
