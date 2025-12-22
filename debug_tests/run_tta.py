@@ -496,14 +496,25 @@ def main() -> None:
             if isinstance(prob_map, torch.Tensor):
                 prob_map = prob_map.detach().cpu().numpy()
             adapted_mask = prob_map > 0.5
+            if adapted_mask.ndim == 3 and adapted_mask.shape[0] == 1:
+                adapted_mask = adapted_mask[0]
         else:
             adapted_mask = base_mask
         adapted.append(adapted_mask)
 
-        inter_a = np.logical_and(adapted_mask, gt_aligned).sum()
-        union_a = np.logical_or(adapted_mask, gt_aligned).sum()
+        if adapted_mask.shape != gt_aligned.shape:
+            adapted_aligned = cv2.resize(
+                adapted_mask.astype(np.uint8),
+                (gt_aligned.shape[1], gt_aligned.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            ) > 0
+        else:
+            adapted_aligned = adapted_mask
+
+        inter_a = np.logical_and(adapted_aligned, gt_aligned).sum()
+        union_a = np.logical_or(adapted_aligned, gt_aligned).sum()
         iou_after = float(inter_a / union_a) if union_a else 1.0
-        dice_after = float(2 * inter_a / (adapted_mask.sum() + gt_aligned.sum())) if (adapted_mask.sum() + gt_aligned.sum()) else 1.0
+        dice_after = float(2 * inter_a / (adapted_aligned.sum() + gt_aligned.sum())) if (adapted_aligned.sum() + gt_aligned.sum()) else 1.0
         metrics_after.append({"file": name, "iou": iou_after, "dice": dice_after})
         per_image_metrics.append(
             {
