@@ -1,8 +1,11 @@
-"""PEFT/LoRA helpers for SAM2 mask decoder."""
+"""Manual LoRA helpers for SAM2 mask decoder."""
 
 from __future__ import annotations
 
 from typing import Iterable, List, Optional
+
+import torch
+import torch.nn as nn
 
 
 def _default_target_modules() -> List[str]:
@@ -10,46 +13,70 @@ def _default_target_modules() -> List[str]:
     return ["q_proj", "k_proj", "v_proj", "out_proj"]
 
 
-import torch.nn as nn
+class LoRALinear(nn.Module):
+    """Linear layer with LoRA adaptation (no structural changes to caller)."""
 
-
-class _MaskDecoderPeftWrapper(nn.Module):
-    """Adapter to make MaskDecoder compatible with PEFT's input_ids signature."""
-
-    def __init__(self, inner):
+    def __init__(self, base: nn.Linear, r: int, alpha: int, dropout: float) -> None:
         super().__init__()
-        self.inner = inner
+        if not isinstance(base, nn.Linear):
+            raise TypeError("LoRALinear expects an nn.Linear base module.")
+        self.base = base
+        self.r = int(r)
+        self.alpha = int(alpha)
+        self.scaling = float(alpha / max(1, r))
+        self.dropout = nn.Dropout(p=float(dropout))
 
-    def forward(self, input_ids=None, **kwargs):
-        return self.inner(**kwargs)
+        self.lora_a = nn.Linear(base.in_features, r, bias=False)
+        self.lora_b = nn.Linear(r, base.out_features, bias=False)
+        nn.init.kaiming_uniform_(self.lora_a.weight, a=5 ** 0.5)
+        nn.init.zeros_(self.lora_b.weight)
+
+        for p in self.base.parameters():
+            p.requires_grad = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.base(x) + self.lora_b(self.lora_a(self.dropout(x))) * self.scaling
+
+
+def _get_parent_module(root: nn.Module, name: str) -> nn.Module:
+    parts = name.split(".")
+    current = root
+    for part in parts[:-1]:
+        current = getattr(current, part)
+    return current
 
 
 def apply_lora_to_mask_decoder(
-    model,
+    model: nn.Module,
     *,
     r: int = 4,
     lora_alpha: int = 8,
     lora_dropout: float = 0.0,
     target_modules: Optional[Iterable[str]] = None,
-) -> None:
+) -> List[str]:
     """Attach LoRA adapters to SAM2 mask decoder attention projections."""
-    try:
-        from peft import LoraConfig, get_peft_model
-    except ImportError as exc:
-        raise ImportError("peft is required for LoRA. Install with: pip install peft") from exc
-
-    modules = list(target_modules) if target_modules is not None else _default_target_modules()
-    lora_cfg = LoraConfig(
-        r=int(r),
-        lora_alpha=int(lora_alpha),
-        lora_dropout=float(lora_dropout),
-        target_modules=modules,
-        bias="none",
-        task_type="FEATURE_EXTRACTION",
-    )
-
     if not hasattr(model, "sam_mask_decoder"):
         raise AttributeError("Expected model.sam_mask_decoder for SAM2 mask decoder.")
 
-    wrapped = _MaskDecoderPeftWrapper(model.sam_mask_decoder)
-    model.sam_mask_decoder = get_peft_model(wrapped, lora_cfg)
+    targets = set(target_modules or _default_target_modules())
+    replaced: List[str] = []
+
+    # Freeze all parameters; LoRA modules will be trainable.
+    for p in model.parameters():
+        p.requires_grad = False
+
+    decoder = model.sam_mask_decoder
+    for name, module in decoder.named_modules():
+        if not isinstance(module, nn.Linear):
+            continue
+        if name.split(".")[-1] not in targets:
+            continue
+        parent = _get_parent_module(decoder, name)
+        child_name = name.split(".")[-1]
+        setattr(parent, child_name, LoRALinear(module, r=r, alpha=lora_alpha, dropout=lora_dropout))
+        replaced.append(name)
+
+    if not replaced:
+        raise ValueError("No target modules matched for LoRA injection.")
+
+    return replaced
