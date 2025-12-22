@@ -10,6 +10,20 @@ def _default_target_modules() -> List[str]:
     return ["q_proj", "k_proj", "v_proj", "out_proj"]
 
 
+import torch.nn as nn
+
+
+class _MaskDecoderPeftWrapper(nn.Module):
+    """Adapter to make MaskDecoder compatible with PEFT's input_ids signature."""
+
+    def __init__(self, inner):
+        super().__init__()
+        self.inner = inner
+
+    def forward(self, input_ids=None, **kwargs):
+        return self.inner(**kwargs)
+
+
 def apply_lora_to_mask_decoder(
     model,
     *,
@@ -37,4 +51,5 @@ def apply_lora_to_mask_decoder(
     if not hasattr(model, "sam_mask_decoder"):
         raise AttributeError("Expected model.sam_mask_decoder for SAM2 mask decoder.")
 
-    model.sam_mask_decoder = get_peft_model(model.sam_mask_decoder, lora_cfg)
+    wrapped = _MaskDecoderPeftWrapper(model.sam_mask_decoder)
+    model.sam_mask_decoder = get_peft_model(wrapped, lora_cfg)
