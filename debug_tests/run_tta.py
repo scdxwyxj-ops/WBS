@@ -444,7 +444,6 @@ def main() -> None:
         name = image_names[idx]
 
         base_mask, history, vis_image, segments, info = run_segmentation_with_info(image, pipeline_cfg, predictor)
-        predictions.append(base_mask)
 
         # Metrics before TTA
         gt_aligned = gt_mask
@@ -454,10 +453,25 @@ def main() -> None:
                 (base_mask.shape[1], base_mask.shape[0]),
                 interpolation=cv2.INTER_NEAREST,
             ) > 0
-        inter = np.logical_and(base_mask, gt_aligned).sum()
-        union = np.logical_or(base_mask, gt_aligned).sum()
+        if base_mask.shape != gt_aligned.shape:
+            base_aligned = cv2.resize(
+                base_mask.astype(np.uint8),
+                (gt_aligned.shape[1], gt_aligned.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            ) > 0
+        else:
+            base_aligned = base_mask
+
+        predictions.append(base_aligned)
+
+        inter = np.logical_and(base_aligned, gt_aligned).sum()
+        union = np.logical_or(base_aligned, gt_aligned).sum()
         iou_before = float(inter / union) if union else 1.0
-        dice_before = float(2 * inter / (base_mask.sum() + gt_aligned.sum())) if (base_mask.sum() + gt_aligned.sum()) else 1.0
+        dice_before = (
+            float(2 * inter / (base_aligned.sum() + gt_aligned.sum()))
+            if (base_aligned.sum() + gt_aligned.sum())
+            else 1.0
+        )
         metrics_before.append({"file": name, "iou": iou_before, "dice": dice_before})
         aligned_gt_masks.append(gt_aligned)
 
@@ -518,8 +532,6 @@ def main() -> None:
                 adapted_mask = adapted_mask[0]
         else:
             adapted_mask = base_mask
-        adapted.append(adapted_mask)
-
         if adapted_mask.shape != gt_aligned.shape:
             adapted_aligned = cv2.resize(
                 adapted_mask.astype(np.uint8),
@@ -528,6 +540,8 @@ def main() -> None:
             ) > 0
         else:
             adapted_aligned = adapted_mask
+
+        adapted.append(adapted_aligned)
 
         inter_a = np.logical_and(adapted_aligned, gt_aligned).sum()
         union_a = np.logical_or(adapted_aligned, gt_aligned).sum()
