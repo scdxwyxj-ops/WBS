@@ -15,6 +15,16 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 
+import sys
+
+# Ensure project root is on PYTHONPATH when running from subdirs.
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+SAM2_DIR = ROOT_DIR.parent / "sam2"
+if SAM2_DIR.exists() and str(SAM2_DIR) not in sys.path:
+    sys.path.insert(0, str(SAM2_DIR))
+
 from configs.pipeline_config import PipelineConfig, load_pipeline_config
 from datasets.dataset import load_dataset
 from image_processings.image_pre_seg import change_image_type, image_i_segment
