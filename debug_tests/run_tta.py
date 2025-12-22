@@ -428,6 +428,8 @@ def main() -> None:
     log_lines.append("=== LoRA Injection ===")
     log_lines.append(f"Injected modules: {injected_modules}")
     log_lines.append(f"Trainable params: {sum(p.numel() for p in trainable_params)}")
+    log_path = output_dir / "train.log"
+    log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
 
     for idx in tqdm(range(len(images)), desc="TTA", unit="img"):
         image = images[idx]
@@ -532,10 +534,14 @@ def main() -> None:
         if last_losses is not None:
             per_image_losses.append({"file": name, **last_losses})
 
-        log_lines.append(
+        log_line = (
             f"{name} | before IoU={iou_before:.4f} Dice={dice_before:.4f} | "
             f"after IoU={iou_after:.4f} Dice={dice_after:.4f}"
         )
+        log_lines.append(log_line)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(log_line + "\n")
+            handle.flush()
 
     miou_before, _ = calculate_miou(predictions, gt_masks)
     miou_after, _ = calculate_miou(adapted, gt_masks)
@@ -560,7 +566,7 @@ def main() -> None:
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (output_dir / "per_image_metrics.json").write_text(json.dumps(per_image_metrics, indent=2), encoding="utf-8")
     (output_dir / "per_image_losses.json").write_text(json.dumps(per_image_losses, indent=2), encoding="utf-8")
-    (output_dir / "train.log").write_text("\n".join(log_lines), encoding="utf-8")
+    # train.log already streamed during runtime
     print(f"\nResults saved to: {output_dir}")
 
 
