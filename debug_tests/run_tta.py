@@ -502,7 +502,8 @@ def main() -> None:
 
         tta_out = None
         last_losses: Optional[Dict[str, float]] = None
-        for _ in range(int(tta_cfg.get("tta_steps", 1))):
+        step_losses: List[Dict[str, float]] = []
+        for step_idx in range(int(tta_cfg.get("tta_steps", 1))):
             tta_out = run_tta_from_pool(
                 predictor,
                 vis_image,
@@ -522,6 +523,7 @@ def main() -> None:
             )
             if tta_out is not None:
                 last_losses = dict(tta_out["tta_outputs"].losses)
+                step_losses.append({"step": step_idx, **last_losses})
 
         if tta_out is not None:
             prob_map = tta_out["tta_outputs"].student_probs
@@ -558,7 +560,7 @@ def main() -> None:
             }
         )
         if last_losses is not None:
-            per_image_losses.append({"file": name, **last_losses})
+            per_image_losses.append({"file": name, "steps": step_losses, "last": last_losses})
 
         log_line = (
             f"{name} | before IoU={iou_before:.4f} Dice={dice_before:.4f} | "
@@ -567,6 +569,16 @@ def main() -> None:
         log_lines.append(log_line)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(log_line + "\n")
+            if step_losses:
+                for entry in step_losses:
+                    handle.write(
+                        "  "
+                        f"step {entry['step']}: "
+                        f"total={entry.get('total', 0.0):.6f}, "
+                        f"anchor={entry.get('anchor', 0.0):.6f}, "
+                        f"entropy={entry.get('entropy', 0.0):.6f}, "
+                        f"consistency={entry.get('consistency', 0.0):.6f}\n"
+                    )
             handle.flush()
 
     miou_before, _ = calculate_miou(predictions, aligned_gt_masks)
