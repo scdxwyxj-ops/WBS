@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import math
 from dataclasses import asdict
 from datetime import datetime
@@ -38,6 +39,11 @@ DATASETS = ["cropped", "dataset_v0"]
 
 
 def _ensure_output_dir() -> Path:
+    override = os.environ.get("PIPELINE_OUTPUT_DIR")
+    if override:
+        out_dir = Path(override)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return out_dir
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = MAIN_DIR / "assets" / f"experiment_{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=False)
@@ -245,6 +251,10 @@ def _run_dataset(
 
 def main() -> None:
     constants = _load_constants()
+    override_cfg = os.environ.get("PIPELINE_CFG")
+    if override_cfg:
+        constants = dict(constants)
+        constants["pipeline_cfg"] = override_cfg
     pipeline_cfg = load_pipeline_config(MAIN_DIR / constants["pipeline_cfg"])
 
     output_dir = _ensure_output_dir()

@@ -379,8 +379,13 @@ def load_tta_config(path: Path) -> dict:
 
 def main() -> None:
     constants = _load_constants()
+    override_cfg = os.environ.get("PIPELINE_CFG")
+    if override_cfg:
+        constants = dict(constants)
+        constants["pipeline_cfg"] = override_cfg
     pipeline_cfg = load_pipeline_config(MAIN_DIR / constants["pipeline_cfg"])
-    tta_cfg = load_tta_config(MAIN_DIR / "configs" / "tta_config.json")
+    tta_cfg_path = os.environ.get("TTA_CFG", str(MAIN_DIR / "configs" / "tta_config.json"))
+    tta_cfg = load_tta_config(Path(tta_cfg_path))
 
     output_dir = _ensure_output_dir()
     _save_config_snapshot(output_dir, constants, pipeline_cfg, tta_cfg)
