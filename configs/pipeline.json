@@ -28,7 +28,7 @@
     "min_point_distance": 10,
     "use_convex_hull": true,
     "convex_hull_threshold": 0.85,
-    "deduplicate_mask_pool": true,
+    "deduplicate_mask_pool": false,
     "mask_pool_iou_threshold": 0.9,
     "target_area_ratio": 0.65,
     "initial_color_mode": "red",

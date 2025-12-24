@@ -31,6 +31,7 @@ from datasets.dataset import load_dataset
 from image_processings.image_pre_seg import change_image_type, image_i_segment
 from image_processings.info import Info, Candidate, PromptBundle
 from image_processings.mask_cluster import select_middle_cluster_entry
+from image_processings.mask_cluster import cluster_masks_by_area
 from image_processings.pick_obj import (
     pick_obj_using_entropy,
     pick_obj_using_heuristic,
@@ -329,7 +330,13 @@ def run_segmentation_with_info(
         info.deduplicate_mask_pool(info.settings.mask_pool_iou_threshold)
     selection_strategy = info.settings.selection_strategy.lower()
     pool = info.get_mask_pool()
-    if selection_strategy == "entropy":
+    if selection_strategy == "cluster_middle":
+        clustered_entries, cluster_meta = cluster_masks_by_area(pool, n_clusters=3)
+        info.mask_pool = list(clustered_entries)
+        pool = info.get_mask_pool()
+        selected_entry = max(pool, key=lambda e: e.get("score", 0.0), default=None)
+        pool_stats = {}
+    elif selection_strategy == "entropy":
         selected_entry, pool_stats, _ = pick_obj_using_entropy(img_resized, pool, target_area_ratio=info.settings.target_area_ratio)
     elif selection_strategy == "edge_gradient":
         selected_entry, pool_stats, _ = pick_obj_using_edge_gradient(img_resized, pool, target_area_ratio=info.settings.target_area_ratio)
@@ -341,10 +348,7 @@ def run_segmentation_with_info(
         final_entry = selected_entry
         selection_meta = {"method": selection_strategy}
         if selection_strategy == "cluster_middle":
-            clustered_entry, cluster_meta = select_middle_cluster_entry(info.get_mask_pool(), n_clusters=3)
             selection_meta["cluster_meta"] = cluster_meta
-            if clustered_entry is not None:
-                final_entry = clustered_entry
         else:
             selection_meta["cluster_meta"] = None
 
