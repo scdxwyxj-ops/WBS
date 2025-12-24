@@ -11,6 +11,7 @@ import torch.nn.functional as F
 
 
 Array = Union[np.ndarray, "torch.Tensor"]
+MASK_PROMPT_SIZE = 256
 
 
 @dataclass
@@ -92,7 +93,8 @@ class ViewTransform:
     def apply_mask(self, mask: Optional[Array]) -> Optional[Array]:
         if mask is None:
             return None
-        h, w = self.out_shape
+        in_h, in_w = self.in_shape
+        out_h, out_w = self.out_shape
         if _is_torch(mask):
             if mask.ndim == 2:
                 mask_t = mask.unsqueeze(0).unsqueeze(0)
@@ -100,9 +102,12 @@ class ViewTransform:
                 mask_t = mask.unsqueeze(0)
             else:
                 mask_t = mask
-            mask_t = F.interpolate(mask_t, size=(h, w), mode="nearest")
+            if mask_t.shape[-2:] != (in_h, in_w):
+                mask_t = F.interpolate(mask_t, size=(in_h, in_w), mode="nearest")
+            mask_t = F.interpolate(mask_t, size=(out_h, out_w), mode="nearest")
             if self.flip:
                 mask_t = torch.flip(mask_t, dims=[-1])
+            mask_t = F.interpolate(mask_t, size=(MASK_PROMPT_SIZE, MASK_PROMPT_SIZE), mode="nearest")
             return mask_t.squeeze(0)
         channel_first = False
         if mask.ndim == 3 and mask.shape[0] == 1:
@@ -113,9 +118,17 @@ class ViewTransform:
             mask_base = mask
         else:
             mask_base = mask.squeeze()
-        mask_t = transform.resize(mask_base, (h, w), preserve_range=True, anti_aliasing=False)
+        if mask_base.shape[:2] != (in_h, in_w):
+            mask_base = transform.resize(mask_base, (in_h, in_w), preserve_range=True, anti_aliasing=False)
+        mask_t = transform.resize(mask_base, (out_h, out_w), preserve_range=True, anti_aliasing=False)
         if self.flip:
             mask_t = np.ascontiguousarray(np.flip(mask_t, axis=1))
+        mask_t = transform.resize(
+            mask_t,
+            (MASK_PROMPT_SIZE, MASK_PROMPT_SIZE),
+            preserve_range=True,
+            anti_aliasing=False,
+        )
         if channel_first:
             mask_t = mask_t[None, :, :]
         return mask_t
