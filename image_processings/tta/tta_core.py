@@ -322,7 +322,14 @@ class TTAPipeline:
         prompts: Dict,
         pseudo_mask: Array,
     ) -> TTAStepOutputs:
-        logits, probs = self._predict_probs(image, prompts)
+        base_transform = ViewTransform(
+            scale=1.0,
+            flip=False,
+            in_shape=image.shape[:2],
+            out_shape=image.shape[:2],
+        )
+        base_prompts = prepare_prompts_for_model(base_transform, prompts)
+        logits, probs = self._predict_probs(image, base_prompts)
         loss_sup = compute_supervision_loss(probs, pseudo_mask) * self.loss_weights.anchor
         loss_entropy = compute_entropy_loss(probs) * self.loss_weights.entropy
         loss_cons = 0.0
