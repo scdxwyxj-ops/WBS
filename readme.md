@@ -28,7 +28,7 @@
   - `dataset`: dataset folder name + optional `target_long_edge` resize.
   - `preprocessing`: `image_size`, graph node budget, and SLIC hyper-parameters.
   - `algorithm`: consumed by `image_processings.info.AlgorithmSettings`.
-    - Includes negative/positive prompt balance, threshold mode/value, candidate_top_k, convex hull toggle, point filtering window, initial color mode (`red` or `dark`), initial positive count, `deduplicate_mask_pool`, mask pool IoU dedup threshold, target area ratio for scoring, and `selection_strategy` (`heuristic`, `entropy`, `edge_gradient`, or `cluster_middle`).
+    - Includes negative/positive prompt balance, threshold mode/value, `seed`, candidate_top_k, convex hull toggle, point filtering window, initial color mode (`red` or `dark`), initial positive count, `deduplicate_mask_pool`, mask pool IoU dedup threshold, target area ratio for scoring, and `selection_strategy` (`heuristic`, `entropy`, `edge_gradient`, or `cluster_middle`).
   - `sam`: predictor settings (`mask_prompt_source`, multimask, refine-with-previous-low-res toggle + rounds).
 - `configs/tta_config.json` (local, ignored)
   - `pseudo_label`: `score_top_k` or `cluster_middle` (takes middle cluster, then selects top score inside).

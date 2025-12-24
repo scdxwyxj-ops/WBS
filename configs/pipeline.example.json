@@ -20,6 +20,7 @@
       "mode": "constant",
       "value": 0.5
     },
+    "seed": 0,
     "candidate_top_k": 3,
     "max_iterations": 20,
     "augment_positive_points": true,

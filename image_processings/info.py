@@ -26,6 +26,7 @@ class AlgorithmSettings:
     score_lower_bound: float = -10.0
     threshold_mode: str = "constant"
     threshold_value: float = 0.5
+    seed: Optional[int] = 0
     candidate_top_k: int = 3
     augment_positive_points: bool = True
     use_subset_points: bool = True
@@ -57,6 +58,7 @@ class AlgorithmSettings:
             score_lower_bound=config.score_lower_bound,
             threshold_mode=config.threshold.mode,
             threshold_value=config.threshold.value,
+            seed=getattr(config, "seed", 0),
             candidate_top_k=config.candidate_top_k,
             augment_positive_points=config.augment_positive_points,
             use_subset_points=config.use_subset_points,
@@ -559,7 +561,7 @@ class Info:
         if not center_points:
             return list(point_coords_list)
 
-        rng = np.random.default_rng(0)
+        rng = np.random.default_rng(self.settings.seed if self.settings.seed is not None else 0)
         order = rng.permutation(len(center_points))
 
         for idx in order:

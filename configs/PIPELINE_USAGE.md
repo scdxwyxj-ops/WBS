@@ -56,6 +56,7 @@ Controls the iterative prompt-promotion loop (`image_processings.info.Info`).
 - `candidate_top_k` *(int)* – Number of neighbour candidates evaluated by SAM2
   each iteration (the algorithm picks the best score among them).
 - `max_iterations` *(int)* – Hard stop on promotion rounds per image.
+- `seed` *(int)* – Random seed used for candidate filtering and clustering.
 - `augment_positive_points` *(bool)* – Enable convex-hull based positive point
   augmentation after promotions.
 - `use_subset_points` *(bool)* – Whether to run spatial filtering on positive
@@ -70,6 +71,7 @@ Controls the iterative prompt-promotion loop (`image_processings.info.Info`).
 - `initial_color_mode` *("red" | "dark")* – How to rank nodes when seeding
   positives/negatives (`red` = bright red first, `dark` = darker regions first).
 - `initial_positive_count` *(int)* – Number of seed positive nodes.
+- `deduplicate_mask_pool` *(bool)* – Toggle IoU-based mask pool deduplication.
 - `mask_pool_iou_threshold` *(float)* – IoU threshold used to deduplicate the
   stored mask pool before final selection.
 - `target_area_ratio` *(float)* – Target foreground ratio when scoring masks

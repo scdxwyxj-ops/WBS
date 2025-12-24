@@ -26,6 +26,7 @@ def _extract_features(
     mask: np.ndarray,
     conv_quality: float,
     target_area_ratio: float,
+    random_state: Optional[int] = 0,
 ) -> Dict[str, float]:
     mask_bool = np.asarray(mask, dtype=bool)
     if mask_bool.shape[:2] != img_rgb.shape[:2]:
@@ -59,7 +60,11 @@ def _extract_features(
     if lab_pixels.shape[0] < 2:
         bcs = 0.0
     else:
-        kmeans = KMeans(n_clusters=2, n_init=5, random_state=0)
+        kmeans = KMeans(
+            n_clusters=2,
+            n_init=5,
+            random_state=0 if random_state is None else int(random_state),
+        )
         labels = kmeans.fit_predict(lab_pixels)
         centers = kmeans.cluster_centers_
         diff = np.linalg.norm(centers[0] - centers[1])
@@ -117,9 +122,10 @@ def score_mask(
     mask: np.ndarray,
     conv_quality: float,
     pool_stats: Dict[str, Dict[str, float]],
+    random_state: Optional[int] = 0,
 ) -> Dict[str, float]:
     target_area_ratio = float(pool_stats.get("target_area_ratio", 0.65))
-    features = _extract_features(img_rgb, mask, conv_quality, target_area_ratio)
+    features = _extract_features(img_rgb, mask, conv_quality, target_area_ratio, random_state)
 
     area_n = _min_max_normalise(features["area"], pool_stats.get("area", {"min": 0.0, "max": 0.0}))
     edge_n = _min_max_normalise(features["edge"], pool_stats.get("edge", {"min": 0.0, "max": 0.0}))
@@ -145,6 +151,7 @@ def pick_obj_using_heuristic(
     pool: List[MaskEntry],
     *,
     target_area_ratio: float = 0.05,
+    random_state: Optional[int] = 0,
 ) -> Tuple[Optional[MaskEntry], Dict[str, Dict[str, float]], List[Dict[str, float]]]:
     if not pool:
         return None, {}, []
@@ -155,6 +162,7 @@ def pick_obj_using_heuristic(
             entry["mask"],
             float(entry.get("conv_quality", entry.get("score", 0.0))),
             target_area_ratio,
+            random_state,
         )
         for entry in pool
     ]
@@ -172,6 +180,7 @@ def pick_obj_using_heuristic(
             entry["mask"],
             float(entry.get("conv_quality", entry.get("score", 0.0))),
             pool_stats,
+            random_state,
         )
         entry["score_details"] = entry_score
         scored_details.append(entry_score)

@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import os
 import math
+import random
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Optional
 
 import numpy as np
 import sys
@@ -33,6 +34,13 @@ from debug_tests.debug_test import (
 from metrics.metric import calculate_dice, calculate_map, calculate_miou
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+
+def _set_seed(seed: Optional[int]) -> None:
+    if seed is None:
+        return
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 DATASETS = ["cropped", "dataset_v0"]
@@ -256,6 +264,7 @@ def main() -> None:
         constants = dict(constants)
         constants["pipeline_cfg"] = override_cfg
     pipeline_cfg = load_pipeline_config(MAIN_DIR / constants["pipeline_cfg"])
+    _set_seed(pipeline_cfg.algorithm.seed)
 
     output_dir = _ensure_output_dir()
     _save_config_snapshot(output_dir, pipeline_cfg, constants)

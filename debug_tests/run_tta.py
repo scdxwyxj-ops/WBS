@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +48,17 @@ from image_processings.tta import (
 from metrics.metric import calculate_miou, calculate_dice, calculate_map
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+
+def _set_seed(seed: Optional[int]) -> None:
+    if seed is None:
+        return
+    random.seed(seed)
+    np.random.seed(seed)
+    if torch is not None:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
 MAIN_DIR = Path(__file__).resolve().parents[1]
 CONSTANTS_PATH = MAIN_DIR / "CONSTANT.json"
@@ -332,17 +344,34 @@ def run_segmentation_with_info(
     selection_strategy = info.settings.selection_strategy.lower()
     pool = info.get_mask_pool()
     if selection_strategy == "cluster_middle":
-        clustered_entries, cluster_meta = cluster_masks_by_area(pool, n_clusters=3)
+        clustered_entries, cluster_meta = cluster_masks_by_area(
+            pool,
+            n_clusters=3,
+            random_state=info.settings.seed,
+        )
         info.mask_pool = list(clustered_entries)
         pool = info.get_mask_pool()
         selected_entry = max(pool, key=lambda e: e.get("score", 0.0), default=None)
         pool_stats = {}
     elif selection_strategy == "entropy":
-        selected_entry, pool_stats, _ = pick_obj_using_entropy(img_resized, pool, target_area_ratio=info.settings.target_area_ratio)
+        selected_entry, pool_stats, _ = pick_obj_using_entropy(
+            img_resized,
+            pool,
+            target_area_ratio=info.settings.target_area_ratio,
+        )
     elif selection_strategy == "edge_gradient":
-        selected_entry, pool_stats, _ = pick_obj_using_edge_gradient(img_resized, pool, target_area_ratio=info.settings.target_area_ratio)
+        selected_entry, pool_stats, _ = pick_obj_using_edge_gradient(
+            img_resized,
+            pool,
+            target_area_ratio=info.settings.target_area_ratio,
+        )
     else:
-        selected_entry, pool_stats, _ = pick_obj_using_heuristic(img_resized, pool, target_area_ratio=info.settings.target_area_ratio)
+        selected_entry, pool_stats, _ = pick_obj_using_heuristic(
+            img_resized,
+            pool,
+            target_area_ratio=info.settings.target_area_ratio,
+            random_state=info.settings.seed,
+        )
 
     if selected_entry is not None:
         info.set_pool_stats(pool_stats)
@@ -403,6 +432,7 @@ def main() -> None:
     pipeline_cfg = load_pipeline_config(MAIN_DIR / constants["pipeline_cfg"])
     tta_cfg_path = os.environ.get("TTA_CFG", str(MAIN_DIR / "configs" / "tta_config.json"))
     tta_cfg = load_tta_config(Path(tta_cfg_path))
+    _set_seed(pipeline_cfg.algorithm.seed)
 
     output_dir = _ensure_output_dir()
     _save_config_snapshot(output_dir, constants, pipeline_cfg, tta_cfg)

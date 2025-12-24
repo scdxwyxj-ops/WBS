@@ -40,6 +40,7 @@ class AlgorithmConfig:
     negative_pct: float
     score_lower_bound: float
     threshold: ThresholdConfig
+    seed: Optional[int]
     candidate_top_k: int
     max_iterations: int
     augment_positive_points: bool
@@ -108,6 +109,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         negative_pct=float(data["algorithm"]["negative_pct"]),
         score_lower_bound=float(data["algorithm"]["score_lower_bound"]),
         threshold=threshold_cfg,
+        seed=data["algorithm"].get("seed"),
         candidate_top_k=int(data["algorithm"]["candidate_top_k"]),
         max_iterations=int(data["algorithm"]["max_iterations"]),
         augment_positive_points=bool(data["algorithm"]["augment_positive_points"]),

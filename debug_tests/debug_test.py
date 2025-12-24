@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
@@ -25,6 +26,13 @@ from metrics.metric import calculate_miou
 from metrics.visualize import show_combined_plots
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+
+def _set_seed(seed: Optional[int]) -> None:
+    if seed is None:
+        return
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 MAIN_DIR = Path(__file__).resolve().parents[1]
@@ -286,7 +294,11 @@ def run_unsupervised_segmentation(
     selection_strategy = info.settings.selection_strategy.lower()
     pool = info.get_mask_pool()
     if selection_strategy == "cluster_middle":
-        clustered_entries, cluster_meta = cluster_masks_by_area(pool, n_clusters=3)
+        clustered_entries, cluster_meta = cluster_masks_by_area(
+            pool,
+            n_clusters=3,
+            random_state=info.settings.seed,
+        )
         info.mask_pool = list(clustered_entries)
         pool = info.get_mask_pool()
         selected_entry = max(pool, key=lambda e: e.get("score", 0.0), default=None)
@@ -308,6 +320,7 @@ def run_unsupervised_segmentation(
             img_resized,
             pool,
             target_area_ratio=info.settings.target_area_ratio,
+            random_state=info.settings.seed,
         )
     if selected_entry is not None:
         info.set_pool_stats(pool_stats)
@@ -346,6 +359,7 @@ def run_unsupervised_segmentation(
 def main() -> None:
     constants = _load_constants()
     pipeline_cfg = load_pipeline_config(MAIN_DIR / constants["pipeline_cfg"])
+    _set_seed(pipeline_cfg.algorithm.seed)
 
     predictor = SAM2ImagePredictor(build_sam2(constants["model_cfg"], constants["checkpoint"]))
 

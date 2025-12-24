@@ -36,6 +36,7 @@ def cluster_masks_by_area(
     entries: Sequence[MaskEntry],
     *,
     n_clusters: int = 3,
+    random_state: Optional[int] = 0,
 ) -> Tuple[List[MaskEntry], Dict[str, Any]]:
     """Cluster mask entries by foreground area and return the middle cluster."""
     if not entries:
@@ -49,7 +50,12 @@ def cluster_masks_by_area(
         return list(entries), {"centers": [float(areas.mean())], "selected_label": 0}
 
     init_centers = _initial_centers(areas, n_clusters)
-    kmeans = KMeans(n_clusters=n_clusters, init=init_centers, n_init=1, random_state=0)
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        init=init_centers,
+        n_init=1,
+        random_state=0 if random_state is None else int(random_state),
+    )
     labels = kmeans.fit_predict(features)
     centers = kmeans.cluster_centers_.reshape(-1)
 
@@ -71,9 +77,10 @@ def select_middle_cluster_entry(
     entries: Sequence[MaskEntry],
     *,
     n_clusters: int = 3,
+    random_state: Optional[int] = 0,
 ) -> Tuple[Optional[MaskEntry], Dict[str, Any]]:
     """Return the highest-scoring entry from the middle-area cluster."""
-    cluster_entries, meta = cluster_masks_by_area(entries, n_clusters=n_clusters)
+    cluster_entries, meta = cluster_masks_by_area(entries, n_clusters=n_clusters, random_state=random_state)
     if not cluster_entries:
         return None, meta
 
