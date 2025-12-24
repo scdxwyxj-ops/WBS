@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -637,6 +638,57 @@ def main() -> None:
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (output_dir / "per_image_metrics.json").write_text(json.dumps(per_image_metrics, indent=2), encoding="utf-8")
     (output_dir / "per_image_losses.json").write_text(json.dumps(per_image_losses, indent=2), encoding="utf-8")
+    # Structured tables for easy analysis.
+    metrics_csv = output_dir / "per_image_metrics.csv"
+    with metrics_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "file",
+                "iou_before",
+                "iou_after",
+                "iou_gain",
+                "dice_before",
+                "dice_after",
+                "dice_gain",
+            ],
+        )
+        writer.writeheader()
+        for row in per_image_metrics:
+            writer.writerow(
+                {
+                    "file": row.get("file"),
+                    "iou_before": row.get("iou_before"),
+                    "iou_after": row.get("iou_after"),
+                    "iou_gain": row.get("iou_after", 0.0) - row.get("iou_before", 0.0),
+                    "dice_before": row.get("dice_before"),
+                    "dice_after": row.get("dice_after"),
+                    "dice_gain": row.get("dice_after", 0.0) - row.get("dice_before", 0.0),
+                }
+            )
+
+    gains = [row.get("iou_after", 0.0) - row.get("iou_before", 0.0) for row in per_image_metrics]
+    if gains:
+        counts, bin_edges = np.histogram(gains, bins=20)
+        hist = {
+            "bins": bin_edges.tolist(),
+            "counts": counts.tolist(),
+            "metric": "iou_gain",
+        }
+        (output_dir / "tta_gain_histogram.json").write_text(json.dumps(hist, indent=2), encoding="utf-8")
+        try:
+            import matplotlib.pyplot as plt
+
+            plt.figure(figsize=(6, 4))
+            plt.hist(gains, bins=20, color="#5B8FF9", edgecolor="black")
+            plt.title("TTA IoU Gain Distribution")
+            plt.xlabel("IoU gain")
+            plt.ylabel("Count")
+            plt.tight_layout()
+            plt.savefig(output_dir / "tta_gain_histogram.png", dpi=150)
+            plt.close()
+        except Exception:
+            pass
     # train.log already streamed during runtime
     print(f"\nResults saved to: {output_dir}")
 
