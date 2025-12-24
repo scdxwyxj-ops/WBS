@@ -3,14 +3,127 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any, Union
 
 import numpy as np
 from skimage import transform, segmentation
 import torch.nn.functional as F
 
 
-Array = np.ndarray
+Array = Union[np.ndarray, "torch.Tensor"]
+
+
+@dataclass
+class ViewTransform:
+    scale: float
+    flip: bool
+    in_shape: Tuple[int, int]
+    out_shape: Tuple[int, int]
+
+    def apply_image(self, image: Array) -> Array:
+        h, w = self.out_shape
+        if _is_torch(image):
+            img_resized = F.interpolate(
+                image.unsqueeze(0) if image.ndim == 3 else image,
+                size=(h, w),
+                mode="bilinear",
+                align_corners=False,
+            )
+            if image.ndim == 3:
+                img_resized = img_resized.squeeze(0)
+            if self.flip:
+                img_resized = torch.flip(img_resized, dims=[-1])
+            return img_resized
+        img_resized = transform.resize(image, (h, w), preserve_range=True, anti_aliasing=True)
+        if self.flip:
+            img_resized = np.ascontiguousarray(np.flip(img_resized, axis=1))
+        return img_resized.astype(image.dtype)
+
+    def apply_points(self, points: Optional[Array]) -> Optional[Array]:
+        if points is None:
+            return None
+        h, w = self.out_shape
+        if _is_torch(points):
+            coords = points.clone().float()
+            coords[..., 0] = coords[..., 0] * self.scale
+            coords[..., 1] = coords[..., 1] * self.scale
+            if self.flip:
+                coords[..., 0] = (w - 1) - coords[..., 0]
+            coords[..., 0].clamp_(0, w - 1)
+            coords[..., 1].clamp_(0, h - 1)
+            return coords
+        coords = np.array(points, dtype=np.float32, copy=True)
+        coords[..., 0] = coords[..., 0] * self.scale
+        coords[..., 1] = coords[..., 1] * self.scale
+        if self.flip:
+            coords[..., 0] = (w - 1) - coords[..., 0]
+        coords[..., 0] = np.clip(coords[..., 0], 0, w - 1)
+        coords[..., 1] = np.clip(coords[..., 1], 0, h - 1)
+        return coords
+
+    def apply_box(self, box: Optional[Array]) -> Optional[Array]:
+        if box is None:
+            return None
+        h, w = self.out_shape
+        if _is_torch(box):
+            box_t = box.clone().float()
+            box_t[..., 0::2] = box_t[..., 0::2] * self.scale
+            box_t[..., 1::2] = box_t[..., 1::2] * self.scale
+            if self.flip:
+                x0 = (w - 1) - box_t[..., 2]
+                x1 = (w - 1) - box_t[..., 0]
+                box_t[..., 0] = x0
+                box_t[..., 2] = x1
+            box_t[..., 0::2].clamp_(0, w - 1)
+            box_t[..., 1::2].clamp_(0, h - 1)
+            return box_t
+        box_t = np.array(box, dtype=np.float32, copy=True)
+        box_t[..., 0::2] = box_t[..., 0::2] * self.scale
+        box_t[..., 1::2] = box_t[..., 1::2] * self.scale
+        if self.flip:
+            x0 = (w - 1) - box_t[..., 2]
+            x1 = (w - 1) - box_t[..., 0]
+            box_t[..., 0] = x0
+            box_t[..., 2] = x1
+        box_t[..., 0::2] = np.clip(box_t[..., 0::2], 0, w - 1)
+        box_t[..., 1::2] = np.clip(box_t[..., 1::2], 0, h - 1)
+        return box_t
+
+    def apply_mask(self, mask: Optional[Array]) -> Optional[Array]:
+        if mask is None:
+            return None
+        h, w = self.out_shape
+        if _is_torch(mask):
+            mask_t = _ensure_4d(mask)
+            mask_t = F.interpolate(mask_t, size=(h, w), mode="nearest")
+            if self.flip:
+                mask_t = torch.flip(mask_t, dims=[-1])
+            return mask_t.squeeze(0).squeeze(0)
+        mask_t = transform.resize(mask, (h, w), preserve_range=True, anti_aliasing=False)
+        if self.flip:
+            mask_t = np.ascontiguousarray(np.flip(mask_t, axis=1))
+        return mask_t
+
+    def apply_prompts(self, prompts: Dict) -> Dict:
+        return {
+            **prompts,
+            "point_coords": self.apply_points(prompts.get("point_coords")),
+            "point_labels": prompts.get("point_labels"),
+            "box": self.apply_box(prompts.get("box")),
+            "mask_input": self.apply_mask(prompts.get("mask_input")),
+        }
+
+    def align_back(self, arr: Array) -> Array:
+        h, w = self.in_shape
+        if _is_torch(arr):
+            arr_t = _ensure_4d(arr)
+            out = F.interpolate(arr_t, size=(h, w), mode="bilinear", align_corners=False)
+            if self.flip:
+                out = torch.flip(out, dims=[-1])
+            return out.squeeze(0).squeeze(0)
+        if self.flip:
+            arr = np.flip(arr, axis=1)
+        return transform.resize(arr, (h, w), preserve_range=True, anti_aliasing=True)
 
 try:  # optional torch support
     import torch
@@ -129,9 +242,7 @@ class TTAPipeline:
         predictor,
         *,
         loss_weights: Optional[TTALossWeights] = None,
-        augment_fn: Optional[
-            Callable[[Array], Sequence[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]]]
-        ] = None,
+        augment_fn: Optional[Callable[[Array], Sequence[Tuple[Array, ViewTransform]]]] = None,
         optimizer_step_fn: Optional[Callable[[Any, Dict[str, float]], None]] = None,
     ) -> None:
         self.predictor = predictor
@@ -196,13 +307,8 @@ class TTAPipeline:
             views = self.augment_fn(image)
             view_probs: List[Array] = []
             view_logits: List[Array] = []
-            for view in views:
-                if len(view) == 3:
-                    img_aug, _, map_prompts = view
-                    prompts_aug = map_prompts(prompts)
-                else:
-                    img_aug, _ = view
-                    prompts_aug = prompts
+            for img_aug, transform_view in views:
+                prompts_aug = transform_view.apply_prompts(prompts)
                 lg, pr = self._predict_probs(img_aug, prompts_aug)
                 view_logits.append(lg)
                 view_probs.append(pr)
@@ -211,9 +317,8 @@ class TTAPipeline:
                 probs_aug = view_probs[0]
                 cons_losses = []
                 base_prob = probs
-                for view, pr_aug in zip(views, view_probs):
-                    align_back = view[1]
-                    aligned = align_back(pr_aug)
+                for (img_aug, transform_view), pr_aug in zip(views, view_probs):
+                    aligned = transform_view.align_back(pr_aug)
                     cons_losses.append(1.0 - _soft_dice(base_prob, aligned))
                 if cons_losses:
                     if _is_torch(cons_losses[0]):
@@ -247,136 +352,24 @@ def default_multi_view_augment(
     scales: Sequence[float] = (0.75, 1.0, 1.25),
     do_flip: bool = True,
     views_per_step: int = 2,
-) -> Callable[[Array], List[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]]]:
-    def _aug(image: Array) -> List[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]]:
+) -> Callable[[Array], List[Tuple[Array, ViewTransform]]]:
+    def _aug(image: Array) -> List[Tuple[Array, ViewTransform]]:
         h, w = image.shape[:2]
-        candidates: List[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]] = []
+        candidates: List[Tuple[Array, ViewTransform]] = []
         for s in scales:
             new_h, new_w = int(h * s), int(w * s)
             if _is_torch(image):
-                img_resized = F.interpolate(
-                    image.unsqueeze(0) if image.ndim == 3 else image,
-                    size=(new_h, new_w),
-                    mode="bilinear",
-                    align_corners=False,
-                )
-                if image.ndim == 3:
-                    img_resized = img_resized.squeeze(0)
+                transform_view = ViewTransform(scale=s, flip=False, in_shape=(h, w), out_shape=(new_h, new_w))
+                img_resized = transform_view.apply_image(image)
             else:
-                img_resized = transform.resize(image, (new_h, new_w), preserve_range=True, anti_aliasing=True)
-
-            def _align_back_factory(target_shape):
-                def _align(arr: Array) -> Array:
-                    if _is_torch(arr):
-                        arr_t = _ensure_4d(arr)
-                        out = F.interpolate(arr_t, size=target_shape, mode="bilinear", align_corners=False)
-                        return out.squeeze(0).squeeze(0)
-                    return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
-                return _align
-
-            def _map_prompts_factory(scale, flipped, out_w, out_h):
-                def _map_prompts(prompts: Dict) -> Dict:
-                    point_coords = prompts.get("point_coords")
-                    point_labels = prompts.get("point_labels")
-                    box = prompts.get("box")
-                    mask_input = prompts.get("mask_input")
-
-                    if point_coords is not None:
-                        if _is_torch(point_coords):
-                            coords = point_coords.clone().float()
-                            coords[..., 0] = coords[..., 0] * scale
-                            coords[..., 1] = coords[..., 1] * scale
-                            if flipped:
-                                coords[..., 0] = (out_w - 1) - coords[..., 0]
-                            coords[..., 0].clamp_(0, out_w - 1)
-                            coords[..., 1].clamp_(0, out_h - 1)
-                        else:
-                            coords = np.array(point_coords, dtype=np.float32, copy=True)
-                            coords[..., 0] = coords[..., 0] * scale
-                            coords[..., 1] = coords[..., 1] * scale
-                            if flipped:
-                                coords[..., 0] = (out_w - 1) - coords[..., 0]
-                            coords[..., 0] = np.clip(coords[..., 0], 0, out_w - 1)
-                            coords[..., 1] = np.clip(coords[..., 1], 0, out_h - 1)
-                    else:
-                        coords = None
-
-                    if box is not None:
-                        if _is_torch(box):
-                            box_t = box.clone().float()
-                            box_t[..., 0::2] = box_t[..., 0::2] * scale
-                            box_t[..., 1::2] = box_t[..., 1::2] * scale
-                            if flipped:
-                                x0 = (out_w - 1) - box_t[..., 2]
-                                x1 = (out_w - 1) - box_t[..., 0]
-                                box_t[..., 0] = x0
-                                box_t[..., 2] = x1
-                            box_t[..., 0::2].clamp_(0, out_w - 1)
-                            box_t[..., 1::2].clamp_(0, out_h - 1)
-                        else:
-                            box_t = np.array(box, dtype=np.float32, copy=True)
-                            box_t[..., 0::2] = box_t[..., 0::2] * scale
-                            box_t[..., 1::2] = box_t[..., 1::2] * scale
-                            if flipped:
-                                x0 = (out_w - 1) - box_t[..., 2]
-                                x1 = (out_w - 1) - box_t[..., 0]
-                                box_t[..., 0] = x0
-                                box_t[..., 2] = x1
-                            box_t[..., 0::2] = np.clip(box_t[..., 0::2], 0, out_w - 1)
-                            box_t[..., 1::2] = np.clip(box_t[..., 1::2], 0, out_h - 1)
-                    else:
-                        box_t = None
-
-                    if mask_input is not None:
-                        if _is_torch(mask_input):
-                            mask_t = _ensure_4d(mask_input)
-                            mask_t = F.interpolate(mask_t, size=(out_h, out_w), mode="nearest")
-                            if flipped:
-                                mask_t = torch.flip(mask_t, dims=[-1])
-                            mask_t = mask_t.squeeze(0).squeeze(0)
-                        else:
-                            mask_t = transform.resize(mask_input, (out_h, out_w), preserve_range=True, anti_aliasing=False)
-                            if flipped:
-                                mask_t = np.flip(mask_t, axis=1)
-                    else:
-                        mask_t = None
-
-                    return {
-                        **prompts,
-                        "point_coords": coords,
-                        "point_labels": point_labels,
-                        "box": box_t,
-                        "mask_input": mask_t,
-                    }
-                return _map_prompts
-
-            align_back = _align_back_factory((h, w))
-            map_prompts = _map_prompts_factory(s, False, new_w, new_h)
-            if _is_torch(img_resized):
-                candidates.append((img_resized, align_back, map_prompts))
-            else:
-                candidates.append((img_resized.astype(image.dtype), align_back, map_prompts))
+                transform_view = ViewTransform(scale=s, flip=False, in_shape=(h, w), out_shape=(new_h, new_w))
+                img_resized = transform_view.apply_image(image)
+            candidates.append((img_resized, transform_view))
 
             if do_flip:
-                flipped = torch.flip(img_resized, dims=[-1]) if _is_torch(img_resized) else np.flip(img_resized, axis=1)
-
-                def _align_back_flip(target_shape):
-                    def _align(arr: Array) -> Array:
-                        if _is_torch(arr):
-                            arr = torch.flip(arr, dims=[-1])
-                            arr_t = _ensure_4d(arr)
-                            out = F.interpolate(arr_t, size=target_shape, mode="bilinear", align_corners=False)
-                            return out.squeeze(0).squeeze(0)
-                        arr = np.flip(arr, axis=1)
-                        return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
-                    return _align
-
-                align_back = _align_back_flip((h, w))
-                map_prompts = _map_prompts_factory(s, True, new_w, new_h)
-                if _is_torch(img_resized):
-                    candidates.append((flipped, align_back, map_prompts))
-                else:
-                    candidates.append((flipped.astype(image.dtype), align_back, map_prompts))
+                transform_view = ViewTransform(scale=s, flip=True, in_shape=(h, w), out_shape=(new_h, new_w))
+                img_flipped = transform_view.apply_image(image)
+                candidates.append((img_flipped, transform_view))
 
         # sample a fixed number of views per step (deterministic order)
         max_views = max(1, int(views_per_step))
