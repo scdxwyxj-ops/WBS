@@ -11,7 +11,8 @@ import torch.nn.functional as F
 
 
 Array = Union[np.ndarray, "torch.Tensor"]
-MASK_PROMPT_SIZE = 256
+
+from .prompt_utils import prepare_prompts_for_model
 
 
 @dataclass
@@ -96,6 +97,7 @@ class ViewTransform:
         in_h, in_w = self.in_shape
         out_h, out_w = self.out_shape
         if _is_torch(mask):
+            has_channel = mask.ndim == 3
             if mask.ndim == 2:
                 mask_t = mask.unsqueeze(0).unsqueeze(0)
             elif mask.ndim == 3:
@@ -107,14 +109,15 @@ class ViewTransform:
             mask_t = F.interpolate(mask_t, size=(out_h, out_w), mode="nearest")
             if self.flip:
                 mask_t = torch.flip(mask_t, dims=[-1])
-            mask_t = F.interpolate(mask_t, size=(MASK_PROMPT_SIZE, MASK_PROMPT_SIZE), mode="nearest")
-            return mask_t.squeeze(0)
+            if has_channel:
+                return mask_t.squeeze(0)
+            return mask_t.squeeze(0).squeeze(0)
         channel_first = False
         if mask.ndim == 3 and mask.shape[0] == 1:
             channel_first = True
             mask_base = mask[0]
         elif mask.ndim == 2:
-            channel_first = True
+            channel_first = False
             mask_base = mask
         else:
             mask_base = mask.squeeze()
@@ -123,12 +126,6 @@ class ViewTransform:
         mask_t = transform.resize(mask_base, (out_h, out_w), preserve_range=True, anti_aliasing=False)
         if self.flip:
             mask_t = np.ascontiguousarray(np.flip(mask_t, axis=1))
-        mask_t = transform.resize(
-            mask_t,
-            (MASK_PROMPT_SIZE, MASK_PROMPT_SIZE),
-            preserve_range=True,
-            anti_aliasing=False,
-        )
         if channel_first:
             mask_t = mask_t[None, :, :]
         return mask_t
@@ -337,7 +334,7 @@ class TTAPipeline:
             view_probs: List[Array] = []
             view_logits: List[Array] = []
             for img_aug, transform_view in views:
-                prompts_aug = transform_view.apply_prompts(prompts)
+                prompts_aug = prepare_prompts_for_model(transform_view, prompts)
                 lg, pr = self._predict_probs(img_aug, prompts_aug)
                 view_logits.append(lg)
                 view_probs.append(pr)
