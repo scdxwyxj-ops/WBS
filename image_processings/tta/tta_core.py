@@ -109,6 +109,7 @@ class ViewTransform:
             channel_first = True
             mask_base = mask[0]
         elif mask.ndim == 2:
+            channel_first = True
             mask_base = mask
         else:
             mask_base = mask.squeeze()
