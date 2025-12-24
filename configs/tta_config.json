@@ -14,7 +14,7 @@
   "augment": {
     "scales": [0.75, 1.0, 1.25],
     "use_flip": true,
-    "views_per_step": 2
+    "views_per_step": 5
   },
   "optimizer": {
     "lr": 1e-4,
