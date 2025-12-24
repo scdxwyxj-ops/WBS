@@ -129,7 +129,9 @@ class TTAPipeline:
         predictor,
         *,
         loss_weights: Optional[TTALossWeights] = None,
-        augment_fn: Optional[Callable[[Array], Sequence[Tuple[Array, Callable[[Array], Array]]]]] = None,
+        augment_fn: Optional[
+            Callable[[Array], Sequence[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]]]
+        ] = None,
         optimizer_step_fn: Optional[Callable[[Any, Dict[str, float]], None]] = None,
     ) -> None:
         self.predictor = predictor
@@ -194,8 +196,14 @@ class TTAPipeline:
             views = self.augment_fn(image)
             view_probs: List[Array] = []
             view_logits: List[Array] = []
-            for img_aug, _ in views:
-                lg, pr = self._predict_probs(img_aug, prompts)
+            for view in views:
+                if len(view) == 3:
+                    img_aug, _, map_prompts = view
+                    prompts_aug = map_prompts(prompts)
+                else:
+                    img_aug, _ = view
+                    prompts_aug = prompts
+                lg, pr = self._predict_probs(img_aug, prompts_aug)
                 view_logits.append(lg)
                 view_probs.append(pr)
             if view_probs:
@@ -203,7 +211,8 @@ class TTAPipeline:
                 probs_aug = view_probs[0]
                 cons_losses = []
                 base_prob = probs
-                for (_, align_back), pr_aug in zip(views, view_probs):
+                for view, pr_aug in zip(views, view_probs):
+                    align_back = view[1]
                     aligned = align_back(pr_aug)
                     cons_losses.append(1.0 - _soft_dice(base_prob, aligned))
                 if cons_losses:
@@ -238,10 +247,10 @@ def default_multi_view_augment(
     scales: Sequence[float] = (0.75, 1.0, 1.25),
     do_flip: bool = True,
     views_per_step: int = 2,
-) -> Callable[[Array], List[Tuple[Array, Callable[[Array], Array]]]]:
-    def _aug(image: Array) -> List[Tuple[Array, Callable[[Array], Array]]]:
+) -> Callable[[Array], List[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]]]:
+    def _aug(image: Array) -> List[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]]:
         h, w = image.shape[:2]
-        candidates: List[Tuple[Array, Callable[[Array], Array]]] = []
+        candidates: List[Tuple[Array, Callable[[Array], Array], Callable[[Dict], Dict]]] = []
         for s in scales:
             new_h, new_w = int(h * s), int(w * s)
             if _is_torch(image):
@@ -265,10 +274,88 @@ def default_multi_view_augment(
                     return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
                 return _align
 
+            def _map_prompts_factory(scale, flipped, out_w, out_h):
+                def _map_prompts(prompts: Dict) -> Dict:
+                    point_coords = prompts.get("point_coords")
+                    point_labels = prompts.get("point_labels")
+                    box = prompts.get("box")
+                    mask_input = prompts.get("mask_input")
+
+                    if point_coords is not None:
+                        if _is_torch(point_coords):
+                            coords = point_coords.clone().float()
+                            coords[..., 0] = coords[..., 0] * scale
+                            coords[..., 1] = coords[..., 1] * scale
+                            if flipped:
+                                coords[..., 0] = (out_w - 1) - coords[..., 0]
+                            coords[..., 0].clamp_(0, out_w - 1)
+                            coords[..., 1].clamp_(0, out_h - 1)
+                        else:
+                            coords = np.array(point_coords, dtype=np.float32, copy=True)
+                            coords[..., 0] = coords[..., 0] * scale
+                            coords[..., 1] = coords[..., 1] * scale
+                            if flipped:
+                                coords[..., 0] = (out_w - 1) - coords[..., 0]
+                            coords[..., 0] = np.clip(coords[..., 0], 0, out_w - 1)
+                            coords[..., 1] = np.clip(coords[..., 1], 0, out_h - 1)
+                    else:
+                        coords = None
+
+                    if box is not None:
+                        if _is_torch(box):
+                            box_t = box.clone().float()
+                            box_t[..., 0::2] = box_t[..., 0::2] * scale
+                            box_t[..., 1::2] = box_t[..., 1::2] * scale
+                            if flipped:
+                                x0 = (out_w - 1) - box_t[..., 2]
+                                x1 = (out_w - 1) - box_t[..., 0]
+                                box_t[..., 0] = x0
+                                box_t[..., 2] = x1
+                            box_t[..., 0::2].clamp_(0, out_w - 1)
+                            box_t[..., 1::2].clamp_(0, out_h - 1)
+                        else:
+                            box_t = np.array(box, dtype=np.float32, copy=True)
+                            box_t[..., 0::2] = box_t[..., 0::2] * scale
+                            box_t[..., 1::2] = box_t[..., 1::2] * scale
+                            if flipped:
+                                x0 = (out_w - 1) - box_t[..., 2]
+                                x1 = (out_w - 1) - box_t[..., 0]
+                                box_t[..., 0] = x0
+                                box_t[..., 2] = x1
+                            box_t[..., 0::2] = np.clip(box_t[..., 0::2], 0, out_w - 1)
+                            box_t[..., 1::2] = np.clip(box_t[..., 1::2], 0, out_h - 1)
+                    else:
+                        box_t = None
+
+                    if mask_input is not None:
+                        if _is_torch(mask_input):
+                            mask_t = _ensure_4d(mask_input)
+                            mask_t = F.interpolate(mask_t, size=(out_h, out_w), mode="nearest")
+                            if flipped:
+                                mask_t = torch.flip(mask_t, dims=[-1])
+                            mask_t = mask_t.squeeze(0).squeeze(0)
+                        else:
+                            mask_t = transform.resize(mask_input, (out_h, out_w), preserve_range=True, anti_aliasing=False)
+                            if flipped:
+                                mask_t = np.flip(mask_t, axis=1)
+                    else:
+                        mask_t = None
+
+                    return {
+                        **prompts,
+                        "point_coords": coords,
+                        "point_labels": point_labels,
+                        "box": box_t,
+                        "mask_input": mask_t,
+                    }
+                return _map_prompts
+
+            align_back = _align_back_factory((h, w))
+            map_prompts = _map_prompts_factory(s, False, new_w, new_h)
             if _is_torch(img_resized):
-                candidates.append((img_resized, _align_back_factory((h, w))))
+                candidates.append((img_resized, align_back, map_prompts))
             else:
-                candidates.append((img_resized.astype(image.dtype), _align_back_factory((h, w))))
+                candidates.append((img_resized.astype(image.dtype), align_back, map_prompts))
 
             if do_flip:
                 flipped = torch.flip(img_resized, dims=[-1]) if _is_torch(img_resized) else np.flip(img_resized, axis=1)
@@ -284,10 +371,12 @@ def default_multi_view_augment(
                         return transform.resize(arr, target_shape, preserve_range=True, anti_aliasing=True)
                     return _align
 
+                align_back = _align_back_flip((h, w))
+                map_prompts = _map_prompts_factory(s, True, new_w, new_h)
                 if _is_torch(img_resized):
-                    candidates.append((flipped, _align_back_flip((h, w))))
+                    candidates.append((flipped, align_back, map_prompts))
                 else:
-                    candidates.append((flipped.astype(image.dtype), _align_back_flip((h, w))))
+                    candidates.append((flipped.astype(image.dtype), align_back, map_prompts))
 
         # sample a fixed number of views per step (deterministic order)
         max_views = max(1, int(views_per_step))
