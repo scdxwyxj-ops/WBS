@@ -37,6 +37,11 @@ mkdir -p "$out_dir"
 echo "Starting run: $ENTRY"
 echo "Output dir: $out_dir"
 
+EXTRA_ARGS=()
+if [[ " $* " != *" --output-dir "* ]]; then
+  EXTRA_ARGS+=(--output-dir "$out_dir")
+fi
+
 PIPELINE_OUTPUT_DIR="$out_dir" TTA_OUTPUT_DIR="$out_dir" \
-  nohup python "$ENTRY" "$@" > "$out_dir/nohup.log" 2>&1 &
+  nohup python "$ENTRY" "${EXTRA_ARGS[@]}" "$@" > "$out_dir/nohup.log" 2>&1 &
 echo "PID: $!"
