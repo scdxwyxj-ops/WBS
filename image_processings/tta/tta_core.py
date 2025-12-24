@@ -237,6 +237,7 @@ class TTAPipeline:
 def default_multi_view_augment(
     scales: Sequence[float] = (0.75, 1.0, 1.25),
     do_flip: bool = True,
+    views_per_step: int = 2,
 ) -> Callable[[Array], List[Tuple[Array, Callable[[Array], Array]]]]:
     def _aug(image: Array) -> List[Tuple[Array, Callable[[Array], Array]]]:
         h, w = image.shape[:2]
@@ -288,7 +289,8 @@ def default_multi_view_augment(
                 else:
                     candidates.append((flipped.astype(image.dtype), _align_back_flip((h, w))))
 
-        # sample up to 2 views per step (deterministic order)
-        return candidates[:2]
+        # sample a fixed number of views per step (deterministic order)
+        max_views = max(1, int(views_per_step))
+        return candidates[:max_views]
 
     return _aug

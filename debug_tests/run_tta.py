@@ -491,6 +491,7 @@ def main() -> None:
         augment_fn = default_multi_view_augment(
             scales=tta_cfg["augment"]["scales"],
             do_flip=tta_cfg["augment"]["use_flip"],
+            views_per_step=int(tta_cfg["augment"].get("views_per_step", 2)),
         )
 
         # Run TTA steps (no-op optimizer placeholder)
