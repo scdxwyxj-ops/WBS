@@ -442,6 +442,15 @@ def main() -> None:
         target_long_edge=pipeline_cfg.dataset.target_long_edge,
         return_paths=True,
     )
+    max_samples_env = os.environ.get("DEBUG_MAX_SAMPLES")
+    if max_samples_env:
+        try:
+            max_samples = max(1, int(max_samples_env))
+            images = images[:max_samples]
+            gt_masks = gt_masks[:max_samples]
+            image_names = image_names[:max_samples]
+        except ValueError:
+            pass
 
     predictions: List[np.ndarray] = []
     adapted: List[np.ndarray] = []

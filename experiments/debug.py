@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,9 @@ def main() -> None:
         pipeline_cfg=args.pipeline_cfg,
         pipeline_output_env="PIPELINE_OUTPUT_DIR",
     )
+    # Limit to a small batch for end-to-end TTA sanity checks.
+    if "DEBUG_MAX_SAMPLES" not in os.environ:
+        os.environ["DEBUG_MAX_SAMPLES"] = "10"
     save_metadata(
         output_dir,
         {
@@ -35,7 +39,7 @@ def main() -> None:
         },
     )
 
-    from debug_tests.debug_test import main as run_main
+    from debug_tests.run_tta import main as run_main
 
     run_main()
 
