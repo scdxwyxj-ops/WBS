@@ -1,0 +1,44 @@
+{
+  "dataset": {
+    "name": "cropped",
+    "target_long_edge": 260
+  },
+  "preprocessing": {
+    "image_size": 260,
+    "num_graph_nodes": 48,
+    "slic": {
+      "compactness": 12,
+      "sigma": 1,
+      "min_size_factor": 0.6,
+      "max_size_factor": 1.2
+    }
+  },
+  "algorithm": {
+    "negative_pct": 0.1,
+    "score_lower_bound": -10,
+    "threshold": {
+      "mode": "constant",
+      "value": 0.5
+    },
+    "candidate_top_k": 3,
+    "max_iterations": 20,
+    "augment_positive_points": true,
+    "use_subset_points": true,
+    "center_range": [0.1, 0.9],
+    "min_point_distance": 10,
+    "use_convex_hull": true,
+    "convex_hull_threshold": 0.85,
+    "deduplicate_mask_pool": true,
+    "mask_pool_iou_threshold": 0.9,
+    "target_area_ratio": 0.65,
+    "initial_color_mode": "red",
+    "initial_positive_count": 3,
+    "selection_strategy": "cluster_middle"
+  },
+  "sam": {
+    "multimask_output": false,
+    "mask_prompt_source": "slic",
+    "refine_with_previous_low_res": true,
+    "refine_rounds": 2
+  }
+}

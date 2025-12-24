@@ -9,6 +9,8 @@ tta_requirement.md
 codex.md
 
 CONSTANT.json
+configs/pipeline.json
+configs/tta_config.json
 
 SAM-TTA/
 

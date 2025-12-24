@@ -1,29 +1,40 @@
 # Notes for WBS
 
 ## Overview
-- Unsupervised white blood cell segmentation around SAM2 prompt refinement with a scored mask pool and optional clustering for final selection.
-- Main entrypoint `debug_tests/debug_test.py` and batch runner `debug_tests/run_full_experiment.py` wire SLIC preprocessing → iterative prompt promotion → mask-pool scoring/selection → optional low-res refinement → evaluation/visualisation.
-- Configuration lives in `CONSTANT.json` (paths + pipeline config pointer) and `configs/pipeline.json` (dataset, preprocessing, algorithm, SAM options).
+- Unsupervised white blood cell segmentation around SAM2 prompt refinement with a scored mask pool and optional clustering for final selection, plus test-time adaptation (TTA) with LoRA.
+- Main entrypoints: pipeline (`debug_tests/debug_test.py`, `debug_tests/run_full_experiment.py`) and pipeline+TTA (`debug_tests/run_tta.py`, `experiments/run_pipeline_tta.py`).
+- Configuration lives in `CONSTANT.json` (paths + pipeline config pointer), `configs/pipeline.json`, and `configs/tta_config.json` (TTA/LoRA/prompt settings).
 
 ## Directory Guide
 - `debug_tests/` – runnable scripts (`debug_test.py` main, `run_full_experiment.py` batch runner, `calculate_foreground_ratio.py` stats helper), notebooks, smoke tests.
 - `image_processings/` – preprocessing (`image_pre_seg.py` + `simple_graph` fallback), prompt state machine (`info.py`), node definition, mask clustering/scoring (`mask_cluster.py`, `pick_obj.py`), post-processing (`image_post_process.py`), logging helpers.
+- `image_processings/tta/` – TTA core, LoRA helpers, prompt mapping utilities.
 - `configs/` – dataclasses + loader for `pipeline.json`, usage notes.
 - `datasets/` – dataset loader utilities respecting `CONSTANT.json:data_path`.
 - `metrics/` – IoU/Dice/mAP calculators and visualisation helpers.
 - `assets/` – output artefacts saved by debug and experiment scripts.
+- `experiments/` – unified run/sweep/ablation entrypoints and runner utilities.
 
 ## Data & Configuration
-- `CONSTANT.json`
+- Local config files are ignored by git; use `*.example.json` as templates:
+  - `CONSTANT.example.json`
+  - `configs/pipeline.example.json`
+  - `configs/tta_config.example.json`
+- `CONSTANT.json` (local, ignored)
   - `data_path` – default dataset root used by `datasets.dataset.load_dataset`.
   - `checkpoint`, `model_cfg` – forwarded to `sam2.build_sam.build_sam2`.
   - `pipeline_cfg` – path to the active `pipeline.json`.
-- `configs/pipeline.json` (validated via `configs/pipeline_config.load_pipeline_config`)
+- `configs/pipeline.json` (local, ignored; validated via `configs/pipeline_config.load_pipeline_config`)
   - `dataset`: dataset folder name + optional `target_long_edge` resize.
   - `preprocessing`: `image_size`, graph node budget, and SLIC hyper-parameters.
   - `algorithm`: consumed by `image_processings.info.AlgorithmSettings`.
-    - Includes negative/positive prompt balance, threshold mode/value, candidate_top_k, convex hull toggle, point filtering window, initial color mode (`red` or `dark`), initial positive count, mask pool IoU dedup threshold, target area ratio for scoring, and `selection_strategy` (`heuristic`, `entropy`, `edge_gradient`, or `cluster_middle`).
+    - Includes negative/positive prompt balance, threshold mode/value, candidate_top_k, convex hull toggle, point filtering window, initial color mode (`red` or `dark`), initial positive count, `deduplicate_mask_pool`, mask pool IoU dedup threshold, target area ratio for scoring, and `selection_strategy` (`heuristic`, `entropy`, `edge_gradient`, or `cluster_middle`).
   - `sam`: predictor settings (`mask_prompt_source`, multimask, refine-with-previous-low-res toggle + rounds).
+- `configs/tta_config.json` (local, ignored)
+  - `pseudo_label`: `score_top_k` or `cluster_middle` (takes middle cluster, then selects top score inside).
+  - `prompt.mask_prompt_source`: `none`, `pipeline_mask_prompt`, or `pipeline_low_res`.
+  - `augment`: scales + flip + views per step.
+  - `lora`: decoder LoRA hyper-params.
 - Legacy `image_processings/config.py` contains older hard-coded config dictionaries; current pipeline does not import it.
 
 ## Preprocessing (`image_processings/image_pre_seg.py`)
@@ -63,8 +74,9 @@
     - When `sam.mask_prompt_source="slic"` the foreground mask is downsampled and stored as `low_res_mask`; other modes skip mask prompts.
   - `record_low_res_mask` caches the most recent SAM low-resolution mask for future rounds.
 - Mask pool / selection
-  - Every SAM call is stored in `mask_pool`/`mask_pool_full` with mask/logits/prompts/score; pool is deduped by IoU via `mask_pool_iou_threshold`.
-  - Final selection can use heuristic scoring (area, edge strength, circularity, convex quality, LAB bimodality), logits-entropy minimisation (softmax/sigmoid → per-pixel entropy mean), or edge-gradient scoring (Sobel on probability map averaged on mask boundary). When `selection_strategy=="cluster_middle"`, the highest-scoring mask within the middle area cluster from `mask_cluster.cluster_masks_by_area` is chosen.
+  - Every SAM call is stored in `mask_pool`/`mask_pool_full` with mask/logits/prompts/score; pool is deduped by IoU via `mask_pool_iou_threshold` when `deduplicate_mask_pool` is enabled.
+  - Final selection can use heuristic scoring (area, edge strength, circularity, convex quality, LAB bimodality), logits-entropy minimisation (softmax/sigmoid → per-pixel entropy mean), or edge-gradient scoring (Sobel on probability map averaged on mask boundary).
+  - When `selection_strategy=="cluster_middle"`, the pool is replaced by the middle-area cluster from `mask_cluster.cluster_masks_by_area`, and the best mask is the top score inside that cluster.
   - Selection metadata and pool stats are recorded for downstream inspection.
 - Geometry utilities
   - `apply_selective_convex_hull`: per-connected-component convex hull drawing with ratio threshold (implements requirement §4.2 toggle).
@@ -94,6 +106,13 @@
 - `image_processings/pick_obj.py`: contains heuristic, logits-entropy, and edge-gradient scoring utilities.
 - `image_processings/mask_cluster.py`: clusters masks by area ratio using KMeans with min/median/max seeds; `select_middle_cluster_entry` picks the top-scoring entry within the middle-area cluster.
 - `image_processings/image_post_process.py`: erosion → largest component → dilation filter (currently unused in main pipeline).
+
+## TTA (Test-Time Adaptation)
+- Core logic in `image_processings/tta/tta_core.py` (anchor + entropy + consistency).
+- Prompt mapping is centralized in `image_processings/tta/prompt_utils.py`:
+  - `prepare_prompts_for_model` ensures `mask_input` is always `1x256x256`.
+  - `prepare_prompts_for_vis` squeezes prompts for display.
+- Runner: `debug_tests/run_tta.py` (full evaluation) and `experiments/run_pipeline_tta.py` (structured experiments).
 
 ## Experiment & Diagnostics
 - `debug_tests/run_full_experiment.py`: runs the full pipeline over predefined datasets (`cropped`, `dataset_v0`), saves config snapshots, per-image metrics, worst-case histories (prompts/logits/masks), and summary JSON under timestamped `assets/experiment_*/`.
@@ -130,6 +149,8 @@
 - Configure `CONSTANT.json` with your `data_path`, `checkpoint`, `model_cfg`, and the active `pipeline_cfg`.
 - Run a single-pass debug loop: `python debug_tests/debug_test.py`.
 - Run full evaluation across predefined datasets: `python debug_tests/run_full_experiment.py` (saves results under `assets/experiment_*/`).
+- Run pipeline + TTA: `python debug_tests/run_tta.py`.
+- Unified launcher with nohup + output dir: `./run.sh tta --pipeline-cfg configs/pipeline.json --tta-cfg configs/tta_config.json`.
 - Inspect foreground ratios: `python debug_tests/calculate_foreground_ratio.py --datasets cropped dataset_v0 original`.
 
 ## Mask Prompt Modes (single switch)
@@ -148,3 +169,4 @@
 ## Outputs
 - Debug runs: `assets/unsupervised_debug/result_XXX.png`.
 - Experiments: `assets/experiment_*/overall_summary.json`, per-dataset summaries, worst-case histories (prompts/logits/masks), and config snapshots.
+- TTA runs: `assets/tta_experiment_*/train.log`, `summary.json`, `per_image_metrics.json/.csv`, `tta_gain_histogram.json` (and `tta_gain_histogram.png` when matplotlib is available).

@@ -1,0 +1,38 @@
+{
+  "tta_steps": 3,
+  "batch_size": 1,
+  "pseudo_label": {
+    "strategy": "score_top_k",
+    "top_k_masks": 3
+  },
+  "prompt": {
+    "mask_prompt_source": "pipeline_mask_prompt"
+  },
+  "loss_weights": {
+    "anchor": 1.0,
+    "entropy": 0.1,
+    "consistency": 0.5,
+    "regularization": 0.0
+  },
+  "augment": {
+    "scales": [0.75, 1.0, 1.25],
+    "use_flip": true,
+    "views_per_step": 5
+  },
+  "optimizer": {
+    "lr": 1e-4,
+    "weight_decay": 0.0,
+    "max_grad_norm": 1.0
+  },
+  "lora": {
+    "target": "mask_decoder",
+    "rank": 4,
+    "alpha": 8,
+    "dropout": 0.0,
+    "target_modules": ["q_proj", "k_proj", "v_proj", "out_proj"]
+  },
+  "teacher_student": {
+    "use_ema": false,
+    "ema_momentum": 0.99
+  }
+}
