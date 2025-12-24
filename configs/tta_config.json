@@ -6,7 +6,7 @@
     "top_k_masks": 3
   },
   "prompt": {
-    "mask_prompt_source": "none"
+    "mask_prompt_source": "pipeline_mask_prompt"
   },
   "loss_weights": {
     "anchor": 1.0,
