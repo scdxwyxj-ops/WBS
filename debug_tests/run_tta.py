@@ -377,6 +377,17 @@ def load_tta_config(path: Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _select_tta_mask_input(prompt_bundle: PromptBundle, strategy: str) -> Optional[np.ndarray]:
+    strategy = (strategy or "none").lower()
+    if strategy in {"none", "off"}:
+        return None
+    if strategy in {"pipeline_mask_prompt", "mask_prompt"}:
+        return prompt_bundle.mask_prompt
+    if strategy in {"pipeline_low_res", "low_res"}:
+        return prompt_bundle.low_res_mask
+    raise ValueError(f"Unknown TTA mask_prompt_source: {strategy}")
+
+
 def main() -> None:
     constants = _load_constants()
     override_cfg = os.environ.get("PIPELINE_CFG")
@@ -482,6 +493,8 @@ def main() -> None:
 
         # Prepare prompts for TTA (use final prompts from last history step)
         final_prompts = history[-1].prompts
+        mask_prompt_source = tta_cfg.get("prompt", {}).get("mask_prompt_source", "none")
+        tta_mask_input = _select_tta_mask_input(final_prompts, mask_prompt_source)
         tta_loss_weights = TTALossWeights(
             anchor=float(tta_cfg["loss_weights"]["anchor"]),
             entropy=float(tta_cfg["loss_weights"]["entropy"]),
@@ -518,7 +531,7 @@ def main() -> None:
                     "point_coords": final_prompts.points,
                     "point_labels": final_prompts.labels,
                     "box": None,
-                    "mask_input": None,
+                    "mask_input": tta_mask_input,
                     "multimask_output": pipeline_cfg.sam.multimask_output,
                 },
                 loss_weights=tta_loss_weights,

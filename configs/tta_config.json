@@ -5,6 +5,9 @@
     "strategy": "score_top_k",
     "top_k_masks": 3
   },
+  "prompt": {
+    "mask_prompt_source": "none"
+  },
   "loss_weights": {
     "anchor": 1.0,
     "entropy": 0.1,
