@@ -94,14 +94,29 @@ class ViewTransform:
             return None
         h, w = self.out_shape
         if _is_torch(mask):
-            mask_t = _ensure_4d(mask)
+            if mask.ndim == 2:
+                mask_t = mask.unsqueeze(0).unsqueeze(0)
+            elif mask.ndim == 3:
+                mask_t = mask.unsqueeze(0)
+            else:
+                mask_t = mask
             mask_t = F.interpolate(mask_t, size=(h, w), mode="nearest")
             if self.flip:
                 mask_t = torch.flip(mask_t, dims=[-1])
-            return mask_t.squeeze(0).squeeze(0)
-        mask_t = transform.resize(mask, (h, w), preserve_range=True, anti_aliasing=False)
+            return mask_t.squeeze(0)
+        channel_first = False
+        if mask.ndim == 3 and mask.shape[0] == 1:
+            channel_first = True
+            mask_base = mask[0]
+        elif mask.ndim == 2:
+            mask_base = mask
+        else:
+            mask_base = mask.squeeze()
+        mask_t = transform.resize(mask_base, (h, w), preserve_range=True, anti_aliasing=False)
         if self.flip:
             mask_t = np.ascontiguousarray(np.flip(mask_t, axis=1))
+        if channel_first:
+            mask_t = mask_t[None, :, :]
         return mask_t
 
     def apply_prompts(self, prompts: Dict) -> Dict:
