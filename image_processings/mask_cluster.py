@@ -7,17 +7,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 from sklearn.cluster import KMeans
 
+from .mask_pool import entry_area_ratio, entry_score
+
 __all__ = ["cluster_masks_by_area", "select_middle_cluster_entry"]
 
 MaskEntry = Dict[str, Any]
-
-
-def _mask_area_ratio(mask: np.ndarray) -> float:
-    mask_bool = np.asarray(mask, dtype=bool)
-    total = mask_bool.size
-    if total == 0:
-        return 0.0
-    return float(mask_bool.sum() / total)
 
 
 def _initial_centers(values: np.ndarray, n_clusters: int) -> np.ndarray:
@@ -48,7 +42,7 @@ def cluster_masks_by_area(
         return [], {"centers": [], "selected_label": None}
 
     n_clusters = max(1, min(n_clusters, len(entries)))
-    areas = np.array([_mask_area_ratio(entry["mask"]) for entry in entries], dtype=np.float32)
+    areas = np.array([entry_area_ratio(entry) for entry in entries], dtype=np.float32)
     features = areas.reshape(-1, 1)
 
     if n_clusters == 1:
@@ -73,16 +67,6 @@ def cluster_masks_by_area(
     return selected_entries, meta
 
 
-def _entry_score(entry: MaskEntry) -> float:
-    details = entry.get("score_details") or {}
-    score = details.get("score")
-    if score is not None:
-        return float(score)
-    if entry.get("score") is not None:
-        return float(entry["score"])
-    return 0.0
-
-
 def select_middle_cluster_entry(
     entries: Sequence[MaskEntry],
     *,
@@ -93,7 +77,7 @@ def select_middle_cluster_entry(
     if not cluster_entries:
         return None, meta
 
-    best_entry = max(cluster_entries, key=_entry_score)
+    best_entry = max(cluster_entries, key=entry_score)
     meta = dict(meta)
     meta["selected_size"] = len(cluster_entries)
     return best_entry, meta

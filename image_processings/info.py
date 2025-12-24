@@ -33,6 +33,7 @@ class AlgorithmSettings:
     min_point_distance: float = 10.0
     use_convex_hull: bool = True
     convex_hull_threshold: float = 0.85
+    deduplicate_mask_pool: bool = True
     produce_low_res_mask: bool = True
     mask_pool_iou_threshold: float = 0.9
     target_area_ratio: float = 0.05
@@ -63,6 +64,7 @@ class AlgorithmSettings:
             min_point_distance=config.min_point_distance,
             use_convex_hull=config.use_convex_hull,
             convex_hull_threshold=config.convex_hull_threshold,
+            deduplicate_mask_pool=getattr(config, "deduplicate_mask_pool", True),
             produce_low_res_mask=produce_low_res,
             mask_pool_iou_threshold=config.mask_pool_iou_threshold,
             target_area_ratio=config.target_area_ratio,
@@ -331,6 +333,7 @@ class Info:
             "prompts": prompts,
             "candidate_id": int(candidate_id) if candidate_id is not None else None,
             "positive_mask": np.asarray(positive_mask, dtype=bool).copy() if positive_mask is not None else None,
+            "score_details": {"score": float(score) if score is not None else 0.0},
         }
         self.mask_pool.append(entry)
         self.mask_pool_full.append(entry)

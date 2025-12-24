@@ -280,7 +280,8 @@ def run_unsupervised_segmentation(
             )
         )
 
-    info.deduplicate_mask_pool(info.settings.mask_pool_iou_threshold)
+    if info.settings.deduplicate_mask_pool:
+        info.deduplicate_mask_pool(info.settings.mask_pool_iou_threshold)
     selection_strategy = info.settings.selection_strategy.lower()
     pool = info.get_mask_pool()
     if selection_strategy == "entropy":

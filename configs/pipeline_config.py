@@ -48,6 +48,7 @@ class AlgorithmConfig:
     min_point_distance: float
     use_convex_hull: bool
     convex_hull_threshold: float
+    deduplicate_mask_pool: bool
     mask_pool_iou_threshold: float
     target_area_ratio: float
     initial_color_mode: str
@@ -115,6 +116,7 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         min_point_distance=float(data["algorithm"]["min_point_distance"]),
         use_convex_hull=bool(data["algorithm"]["use_convex_hull"]),
         convex_hull_threshold=float(data["algorithm"]["convex_hull_threshold"]),
+        deduplicate_mask_pool=bool(data["algorithm"].get("deduplicate_mask_pool", True)),
         mask_pool_iou_threshold=float(data["algorithm"]["mask_pool_iou_threshold"]),
         target_area_ratio=float(data["algorithm"]["target_area_ratio"]),
         initial_color_mode=str(data["algorithm"].get("initial_color_mode", "dark")),
