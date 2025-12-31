@@ -9,7 +9,7 @@
     "mask_prompt_source": "pipeline_mask_prompt"
   },
   "confidence_regions": {
-    "enabled": false,
+    "enabled": true,
     "erosion_iters": 2,
     "dilation_iters": 2
   },
