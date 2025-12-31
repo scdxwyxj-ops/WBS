@@ -330,6 +330,8 @@ def _soft_dice(a: Array, b: Array, weight: Optional[Array] = None) -> float:
             weight_t = torch.ones_like(a_t)
         else:
             weight_t = weight if _is_torch(weight) else torch.as_tensor(weight, device=a_t.device)
+            if weight_t.dtype == torch.bool:
+                weight_t = weight_t.to(dtype=a_t.dtype)
             if weight_t.shape != a_t.shape:
                 weight_t = F.interpolate(
                     _ensure_4d(weight_t),
