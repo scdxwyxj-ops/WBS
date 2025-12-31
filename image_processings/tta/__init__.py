@@ -2,6 +2,7 @@
 
 from .tta_core import (
     TTAPipeline,
+    TTAConfidenceConfig,
     TTALossWeights,
     TTAStepOutputs,
     compute_supervision_loss,
@@ -14,6 +15,7 @@ from .tta_runner import run_tta_from_pool
 
 __all__ = [
     "TTAPipeline",
+    "TTAConfidenceConfig",
     "TTALossWeights",
     "TTAStepOutputs",
     "compute_supervision_loss",

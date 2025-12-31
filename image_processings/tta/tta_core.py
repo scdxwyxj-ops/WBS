@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any, Union
 
 import numpy as np
 from skimage import transform, segmentation
+from scipy.ndimage import binary_dilation, binary_erosion
 import torch.nn.functional as F
 
 
@@ -165,6 +166,13 @@ class TTALossWeights:
     regularization: float = 0.0
 
 
+@dataclass(frozen=True)
+class TTAConfidenceConfig:
+    enabled: bool = False
+    erosion_iters: int = 2
+    dilation_iters: int = 2
+
+
 @dataclass
 class TTAStepOutputs:
     pseudo_mask: Array
@@ -213,6 +221,51 @@ def compute_supervision_loss(probs: Array, pseudo_mask: Array) -> float:
     return _binary_cross_entropy(probs, target)
 
 
+def _resize_mask_like(mask: Array, target: Array) -> Array:
+    if _is_torch(target):
+        mask_t = mask if _is_torch(mask) else torch.as_tensor(mask, device=target.device, dtype=target.dtype)
+        mask_t = mask_t.to(dtype=target.dtype)
+        if mask_t.ndim == 2:
+            mask_t = mask_t.unsqueeze(0).unsqueeze(0)
+        elif mask_t.ndim == 3:
+            mask_t = mask_t.unsqueeze(0)
+        mask_t = F.interpolate(mask_t, size=target.shape[-2:], mode="nearest")
+        if target.ndim == 2:
+            return mask_t.squeeze(0).squeeze(0)
+        return mask_t.squeeze(0)
+    mask_np = np.asarray(mask, dtype=float)
+    if mask_np.shape != target.shape:
+        mask_np = transform.resize(mask_np, target.shape, preserve_range=True, order=0, anti_aliasing=False)
+    return mask_np
+
+
+def compute_supervision_loss_masked(
+    probs: Array,
+    fg_mask: Array,
+    bg_mask: Array,
+) -> float:
+    if _is_torch(probs):
+        fg_t = _resize_mask_like(fg_mask, probs).to(dtype=probs.dtype)
+        bg_t = _resize_mask_like(bg_mask, probs).to(dtype=probs.dtype)
+        weight = (fg_t + bg_t).clamp(0, 1)
+        if torch.sum(weight) == 0:
+            return torch.zeros((), device=probs.device)
+        target = fg_t
+        pred_t = probs.clamp(1e-6, 1.0 - 1e-6)
+        loss = -(target * torch.log(pred_t) + (1.0 - target) * torch.log(1.0 - pred_t))
+        return (loss * weight).sum() / (weight.sum() + 1e-6)
+    fg_np = _resize_mask_like(fg_mask, probs)
+    bg_np = _resize_mask_like(bg_mask, probs)
+    weight = np.clip(fg_np + bg_np, 0.0, 1.0)
+    if np.sum(weight) == 0:
+        return 0.0
+    target = fg_np
+    pred_np = np.clip(probs, 1e-6, 1.0 - 1e-6)
+    target_np = np.clip(target, 0.0, 1.0)
+    loss = -(target_np * np.log(pred_np) + (1.0 - target_np) * np.log(1.0 - pred_np))
+    return float((loss * weight).sum() / (np.sum(weight) + 1e-6))
+
+
 def compute_entropy_loss(probs: Array) -> float:
     if _is_torch(probs):
         p = probs.clamp(1e-6, 1.0 - 1e-6)
@@ -221,6 +274,35 @@ def compute_entropy_loss(probs: Array) -> float:
     p = np.clip(probs, 1e-6, 1.0 - 1e-6)
     entropy = -p * np.log(p) - (1.0 - p) * np.log(1.0 - p)
     return float(np.mean(entropy))
+
+
+def compute_entropy_loss_masked(probs: Array, weight_mask: Array) -> float:
+    if _is_torch(probs):
+        weight = _resize_mask_like(weight_mask, probs).to(dtype=probs.dtype)
+        if torch.sum(weight) == 0:
+            return torch.zeros((), device=probs.device)
+        p = probs.clamp(1e-6, 1.0 - 1e-6)
+        entropy = -p * torch.log(p) - (1.0 - p) * torch.log(1.0 - p)
+        return (entropy * weight).sum() / (weight.sum() + 1e-6)
+    weight = _resize_mask_like(weight_mask, probs)
+    if np.sum(weight) == 0:
+        return 0.0
+    p = np.clip(probs, 1e-6, 1.0 - 1e-6)
+    entropy = -p * np.log(p) - (1.0 - p) * np.log(1.0 - p)
+    return float((entropy * weight).sum() / (np.sum(weight) + 1e-6))
+
+
+def _confidence_masks(
+    pseudo_mask: Array,
+    *,
+    erosion_iters: int,
+    dilation_iters: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    mask = np.asarray(pseudo_mask, dtype=bool)
+    fg = binary_erosion(mask, iterations=max(0, int(erosion_iters))) if erosion_iters > 0 else mask
+    dil = binary_dilation(mask, iterations=max(0, int(dilation_iters))) if dilation_iters > 0 else mask
+    bg = np.logical_not(dil)
+    return fg, bg
 
 
 def _sigmoid(logits: Array) -> Array:
@@ -270,12 +352,14 @@ class TTAPipeline:
         loss_weights: Optional[TTALossWeights] = None,
         augment_fn: Optional[Callable[[Array], Sequence[Tuple[Array, ViewTransform]]]] = None,
         optimizer_step_fn: Optional[Callable[[Any, Dict[str, float]], None]] = None,
+        confidence_cfg: Optional[TTAConfidenceConfig] = None,
     ) -> None:
         self.predictor = predictor
         self.loss_weights = loss_weights or TTALossWeights()
         self.augment_fn = augment_fn
         self.optimizer_step_fn = optimizer_step_fn
         self._train_with_grad = optimizer_step_fn is not None and torch is not None
+        self.confidence_cfg = confidence_cfg or TTAConfidenceConfig()
 
     def _predict_probs(self, image: Array, prompts: Dict) -> Tuple[Array, Array]:
         if self._train_with_grad and hasattr(self.predictor, "model"):
@@ -330,8 +414,19 @@ class TTAPipeline:
         )
         base_prompts = prepare_prompts_for_model(base_transform, prompts)
         logits, probs = self._predict_probs(image, base_prompts)
-        loss_sup = compute_supervision_loss(probs, pseudo_mask) * self.loss_weights.anchor
-        loss_entropy = compute_entropy_loss(probs) * self.loss_weights.entropy
+        weight_mask = None
+        if self.confidence_cfg.enabled:
+            fg_mask, bg_mask = _confidence_masks(
+                pseudo_mask,
+                erosion_iters=self.confidence_cfg.erosion_iters,
+                dilation_iters=self.confidence_cfg.dilation_iters,
+            )
+            weight_mask = np.logical_or(fg_mask, bg_mask)
+            loss_sup = compute_supervision_loss_masked(probs, fg_mask, bg_mask) * self.loss_weights.anchor
+            loss_entropy = compute_entropy_loss_masked(probs, weight_mask) * self.loss_weights.entropy
+        else:
+            loss_sup = compute_supervision_loss(probs, pseudo_mask) * self.loss_weights.anchor
+            loss_entropy = compute_entropy_loss(probs) * self.loss_weights.entropy
         loss_cons = 0.0
         logits_aug = None
         probs_aug = None
@@ -352,7 +447,7 @@ class TTAPipeline:
                 base_prob = probs
                 for (img_aug, transform_view), pr_aug in zip(views, view_probs):
                     aligned = transform_view.align_back(pr_aug)
-                    cons_losses.append(1.0 - _soft_dice(base_prob, aligned))
+                    cons_losses.append(1.0 - _soft_dice(base_prob, aligned, weight_mask))
                 if cons_losses:
                     if _is_torch(cons_losses[0]):
                         loss_cons = torch.stack(cons_losses).mean() * self.loss_weights.consistency

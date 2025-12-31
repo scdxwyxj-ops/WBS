@@ -8,6 +8,11 @@
   "prompt": {
     "mask_prompt_source": "pipeline_mask_prompt"
   },
+  "confidence_regions": {
+    "enabled": false,
+    "erosion_iters": 2,
+    "dilation_iters": 2
+  },
   "loss_weights": {
     "anchor": 1.0,
     "entropy": 0.1,

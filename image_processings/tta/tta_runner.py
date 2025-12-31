@@ -7,7 +7,7 @@ from typing import Dict, List, Sequence, Optional
 import numpy as np
 
 from image_processings.mask_cluster import cluster_masks_by_area
-from .tta_core import TTAPipeline, TTALossWeights, default_multi_view_augment
+from .tta_core import TTAPipeline, TTALossWeights, TTAConfidenceConfig, default_multi_view_augment
 
 
 def _select_pseudo_masks(
@@ -47,6 +47,7 @@ def run_tta_from_pool(
     prompts: Dict,
     *,
     loss_weights: Optional[TTALossWeights] = None,
+    confidence_cfg: Optional[TTAConfidenceConfig] = None,
     selection_strategy: str = "score_top_k",
     top_k: int = 3,
     augment_fn=None,
@@ -63,6 +64,7 @@ def run_tta_from_pool(
     tta = TTAPipeline(
         predictor,
         loss_weights=loss_weights or TTALossWeights(),
+        confidence_cfg=confidence_cfg or TTAConfidenceConfig(),
         augment_fn=augment_fn or default_multi_view_augment(),
         optimizer_step_fn=optimizer_step_fn,
     )

@@ -40,6 +40,7 @@ from image_processings.pick_obj import (
     pick_obj_using_edge_gradient,
 )
 from image_processings.tta import (
+    TTAConfidenceConfig,
     TTALossWeights,
     run_tta_from_pool,
     default_multi_view_augment,
@@ -546,6 +547,12 @@ def main() -> None:
             consistency=float(tta_cfg["loss_weights"]["consistency"]),
             regularization=float(tta_cfg["loss_weights"].get("regularization", 0.0)),
         )
+        conf_cfg = tta_cfg.get("confidence_regions", {})
+        tta_confidence = TTAConfidenceConfig(
+            enabled=bool(conf_cfg.get("enabled", False)),
+            erosion_iters=int(conf_cfg.get("erosion_iters", 2)),
+            dilation_iters=int(conf_cfg.get("dilation_iters", 2)),
+        )
         augment_fn = default_multi_view_augment(
             scales=tta_cfg["augment"]["scales"],
             do_flip=tta_cfg["augment"]["use_flip"],
@@ -580,6 +587,7 @@ def main() -> None:
                     "multimask_output": pipeline_cfg.sam.multimask_output,
                 },
                 loss_weights=tta_loss_weights,
+                confidence_cfg=tta_confidence,
                 selection_strategy=tta_cfg.get("pseudo_label", {}).get("strategy", "score_top_k"),
                 top_k=int(tta_cfg.get("pseudo_label", {}).get("top_k_masks", 3)),
                 augment_fn=augment_fn,

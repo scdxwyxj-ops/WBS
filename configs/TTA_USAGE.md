@@ -22,6 +22,11 @@ This document describes `configs/tta_config.json` (use `configs/tta_config.examp
   - `"pipeline_mask_prompt"` / `"mask_prompt"`: use `PromptBundle.mask_prompt`.
   - `"pipeline_low_res"` / `"low_res"`: use `PromptBundle.low_res_mask`.
 
+### `confidence_regions`
+- `enabled`: when true, only compute losses on high‑confidence regions.
+- `erosion_iters`: iterations for eroding the pseudo mask to get sure foreground.
+- `dilation_iters`: iterations for dilating the pseudo mask to get sure background.
+
 ### `loss_weights`
 - `anchor`: weight for pseudo‑label supervision.
 - `entropy`: weight for entropy minimisation.
