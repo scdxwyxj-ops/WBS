@@ -330,6 +330,13 @@ def _soft_dice(a: Array, b: Array, weight: Optional[Array] = None) -> float:
             weight_t = torch.ones_like(a_t)
         else:
             weight_t = weight if _is_torch(weight) else torch.as_tensor(weight, device=a_t.device)
+            if weight_t.shape != a_t.shape:
+                weight_t = F.interpolate(
+                    _ensure_4d(weight_t),
+                    size=a_t.shape[-2:],
+                    mode="nearest",
+                )
+                weight_t = weight_t.squeeze(0).squeeze(0) if a_t.ndim == 2 else weight_t.squeeze(0)
         intersect = torch.sum(weight_t * a_t * b_t)
         denom = torch.sum(weight_t * a_t) + torch.sum(weight_t * b_t) + 1e-6
         return 2.0 * intersect / denom
@@ -337,6 +344,8 @@ def _soft_dice(a: Array, b: Array, weight: Optional[Array] = None) -> float:
     b = np.asarray(b, dtype=float)
     if weight is None:
         weight = np.ones_like(a, dtype=float)
+    else:
+        weight = _resize_mask_like(weight, a)
     intersect = np.sum(weight * a * b)
     denom = np.sum(weight * a) + np.sum(weight * b) + 1e-6
     return float(2.0 * intersect / denom)
