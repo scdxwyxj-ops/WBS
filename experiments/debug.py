@@ -20,7 +20,14 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = prepare_output_dir("debug", args.output_dir)
-    set_seed(args.seed)
+    effective_seed = args.seed
+    if effective_seed is None:
+        from configs.pipeline_config import load_pipeline_config
+
+        cfg_path = args.pipeline_cfg or str(ROOT / "configs" / "pipeline.json")
+        pipeline_cfg = load_pipeline_config(Path(cfg_path))
+        effective_seed = pipeline_cfg.algorithm.seed
+    set_seed(effective_seed)
     apply_env_overrides(
         output_dir,
         pipeline_cfg=args.pipeline_cfg,
@@ -33,7 +40,7 @@ def main() -> None:
         output_dir,
         {
             "mode": "debug",
-            "seed": args.seed,
+            "seed": effective_seed,
             "pipeline_cfg": args.pipeline_cfg,
             "output_dir": str(output_dir),
         },
