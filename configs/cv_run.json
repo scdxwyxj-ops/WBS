@@ -4,6 +4,6 @@
   "datasets": ["dataset_v0", "cropped"],
   "folds": 5,
   "seed": 42,
-  "search_space_path": "compartments/cv_search.json",
-  "max_samples": null
+  "search_space_path": "configs/cv_search.json",
+  "max_samples": 50
 }

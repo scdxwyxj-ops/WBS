@@ -1,0 +1,16 @@
+{
+  "name": "pipeline_cv_search",
+  "notes": "Moderate search space for 5-fold tuning on dataset_v0 + cropped.",
+  "search_space": {
+    "algorithm.threshold.value": [0.45, 0.5, 0.55],
+    "algorithm.negative_pct": [0.05, 0.1, 0.15],
+    "algorithm.candidate_top_k": [3, 5],
+    "algorithm.max_iterations": [15, 20],
+    "algorithm.min_point_distance": [8, 10, 12],
+    "algorithm.target_area_ratio": [0.6, 0.65, 0.7],
+    "preprocessing.slic.compactness": [8.0, 12.0, 16.0],
+    "preprocessing.slic.sigma": [0.5, 1.0],
+    "preprocessing.slic.min_size_factor": [0.5, 0.6],
+    "preprocessing.slic.max_size_factor": [1.2, 1.4]
+  }
+}

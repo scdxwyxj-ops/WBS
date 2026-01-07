@@ -144,6 +144,7 @@ def _make_logger(output_dir: Path):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="5-fold CV tuning for pipeline hyperparameters.")
+    parser.add_argument("--config", default=None, help="Path to cv_run.json config (preferred).")
     parser.add_argument("--pipeline-cfg", default=str(ROOT / "configs" / "pipeline.json"))
     parser.add_argument("--datasets", default="dataset_v0,cropped")
     parser.add_argument("--folds", type=int, default=5)
@@ -152,6 +153,18 @@ def main() -> None:
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
+
+    if args.config:
+        cfg_payload = json.loads(Path(args.config).read_text(encoding="utf-8"))
+        args.pipeline_cfg = cfg_payload.get("pipeline_cfg", args.pipeline_cfg)
+        datasets = cfg_payload.get("datasets")
+        if datasets:
+            args.datasets = ",".join(datasets)
+        args.folds = int(cfg_payload.get("folds", args.folds))
+        args.seed = int(cfg_payload.get("seed", args.seed))
+        args.search = cfg_payload.get("search_space_path", args.search)
+        if cfg_payload.get("max_samples") is not None:
+            args.max_samples = int(cfg_payload.get("max_samples"))
 
     output_dir = prepare_output_dir("cv_tune_pipeline", args.output_dir)
     log = _make_logger(output_dir)
