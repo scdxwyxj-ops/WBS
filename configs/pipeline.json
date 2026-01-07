@@ -1,6 +1,6 @@
 {
   "dataset": {
-    "name": "cropped",
+    "name": "dataset_v0",
     "target_long_edge": 260
   },
   "preprocessing": {
