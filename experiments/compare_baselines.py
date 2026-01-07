@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -54,6 +55,18 @@ def _read_config(path: Path) -> BaselineConfig:
         max_samples=payload.get("max_samples"),
         method=dict(payload.get("method", {})),
     )
+
+
+def _make_logger(output_dir: Path):
+    log_path = output_dir / "train.log"
+    handle = log_path.open("a", encoding="utf-8")
+
+    def _log(message: str) -> None:
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        handle.write(f"[{timestamp}] {message}\n")
+        handle.flush()
+
+    return _log
 
 
 def _ensure_uint8(image: np.ndarray) -> np.ndarray:
@@ -251,9 +264,23 @@ def _run_method(
     raise ValueError(f"Unknown baseline method: {method_type}")
 
 
-def run_from_config(config_path: Path, *, output_root: Optional[str] = None) -> Path:
+def run_from_config(
+    config_path: Path,
+    *,
+    output_root: Optional[str] = None,
+    max_samples_override: Optional[int] = None,
+) -> Path:
     config = _read_config(config_path)
+    if max_samples_override is not None:
+        config = BaselineConfig(
+            name=config.name,
+            datasets=config.datasets,
+            target_long_edge=config.target_long_edge,
+            max_samples=int(max_samples_override),
+            method=config.method,
+        )
     output_dir = prepare_output_dir(f"baseline_{config.name}", output_root)
+    log = _make_logger(output_dir)
     save_metadata(
         output_dir,
         {
@@ -265,6 +292,22 @@ def run_from_config(config_path: Path, *, output_root: Optional[str] = None) -> 
             "output_dir": str(output_dir),
         },
     )
+    (output_dir / "config_snapshot.json").write_text(
+        json.dumps(
+            {
+                "config_path": str(config_path),
+                "datasets": config.datasets,
+                "target_long_edge": config.target_long_edge,
+                "max_samples": config.max_samples,
+                "method": config.method,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    log(f"Config: {config_path}")
+    log(f"Datasets: {config.datasets}")
+    log(f"Method: {config.method}")
 
     constants = _load_constants()
     method_type = config.method.get("type", "").lower()
@@ -326,6 +369,10 @@ def run_from_config(config_path: Path, *, output_root: Optional[str] = None) -> 
         }
         (dataset_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         overall_summary.append(summary)
+        log(
+            f"{dataset_name}: mIoU={summary['miou']:.4f} "
+            f"Dice={summary['dice']:.4f} HD95={summary['hd95']:.4f}"
+        )
 
     (output_dir / "overall_summary.json").write_text(json.dumps(overall_summary, indent=2), encoding="utf-8")
     return output_dir
@@ -334,9 +381,14 @@ def run_from_config(config_path: Path, *, output_root: Optional[str] = None) -> 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run baseline comparisons.")
     parser.add_argument("--config", required=True, help="Path to baseline config JSON.")
+    parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
-    run_from_config(Path(args.config), output_root=args.output_dir)
+    run_from_config(
+        Path(args.config),
+        output_root=args.output_dir,
+        max_samples_override=args.max_samples,
+    )
 
 
 if __name__ == "__main__":

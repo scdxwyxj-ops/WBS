@@ -7,6 +7,7 @@ import csv
 import json
 import sys
 from dataclasses import asdict, replace
+from datetime import datetime
 from itertools import product
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
@@ -115,6 +116,18 @@ def _load_search_space(path: str | None) -> Dict[str, List[Any]]:
     return payload.get("search_space", payload)
 
 
+def _make_logger(output_dir: Path):
+    log_path = output_dir / "train.log"
+    handle = log_path.open("a", encoding="utf-8")
+
+    def _log(message: str) -> None:
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        handle.write(f"[{timestamp}] {message}\n")
+        handle.flush()
+
+    return _log
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="5-fold CV tuning for pipeline hyperparameters.")
     parser.add_argument("--pipeline-cfg", default=str(ROOT / "configs" / "pipeline.json"))
@@ -127,6 +140,7 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = prepare_output_dir("cv_tune_pipeline", args.output_dir)
+    log = _make_logger(output_dir)
     set_seed(args.seed)
 
     base_cfg = load_pipeline_config(Path(args.pipeline_cfg))
@@ -155,10 +169,27 @@ def main() -> None:
             "output_dir": str(output_dir),
         },
     )
+    (output_dir / "config_snapshot.json").write_text(
+        json.dumps(
+            {
+                "pipeline_cfg": str(args.pipeline_cfg),
+                "datasets": dataset_names,
+                "folds": args.folds,
+                "seed": args.seed,
+                "search_space": search_space,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    log(f"Loaded pipeline config: {args.pipeline_cfg}")
+    log(f"Datasets: {dataset_names} | folds={args.folds} | seed={args.seed}")
+    log(f"Grid size: {len(grid)} runs")
 
     for run_idx, overrides in enumerate(grid):
         run_name = f"run_{run_idx:03d}"
         cfg = _apply_overrides(base_cfg, overrides)
+        log(f"[{run_name}] overrides={overrides}")
         run_summary: Dict[str, Any] = {
             "name": run_name,
             "overrides": overrides,
@@ -181,6 +212,10 @@ def main() -> None:
                 fold_cfg = replace(cfg, dataset=replace(cfg.dataset, name=dataset_name))
                 miou, dice = _evaluate_images(fold_cfg, predictor, images, masks, val_indices)
                 fold_scores.append((miou, dice))
+                log(
+                    f"[{run_name}] {dataset_name} fold={fold_idx} "
+                    f"count={len(val_indices)} mIoU={miou:.4f} Dice={dice:.4f}"
+                )
                 run_summary["folds"].append(
                     {
                         "dataset": dataset_name,
@@ -200,6 +235,7 @@ def main() -> None:
 
         run_summary["mean_miou"] = mean_miou
         run_summary["mean_dice"] = mean_dice
+        log(f"[{run_name}] mean mIoU={mean_miou:.4f} Dice={mean_dice:.4f}")
         all_results.append(run_summary)
 
     all_results.sort(key=lambda r: r["mean_miou"], reverse=True)
@@ -207,6 +243,8 @@ def main() -> None:
 
     top = all_results[0] if all_results else None
     (output_dir / "cv_best.json").write_text(json.dumps(top, indent=2), encoding="utf-8")
+    if top:
+        log(f"Best run: {top['name']} mIoU={top['mean_miou']:.4f} Dice={top['mean_dice']:.4f}")
 
     csv_path = output_dir / "cv_results.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as handle:

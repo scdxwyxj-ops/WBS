@@ -16,6 +16,7 @@ from experiments.compare_baselines import run_from_config
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run baseline comparisons for all configs.")
     parser.add_argument("--compartments", default=str(ROOT / "compartments"))
+    parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
@@ -28,7 +29,7 @@ def main() -> None:
         raise FileNotFoundError(f"No config JSON files found in {cfg_dir}")
 
     for cfg in configs:
-        run_from_config(cfg, output_root=args.output_dir)
+        run_from_config(cfg, output_root=args.output_dir, max_samples_override=args.max_samples)
 
 
 if __name__ == "__main__":
