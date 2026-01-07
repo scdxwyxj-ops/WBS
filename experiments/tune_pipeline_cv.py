@@ -113,7 +113,21 @@ def _load_search_space(path: str | None) -> Dict[str, List[Any]]:
     if not path:
         return DEFAULT_SEARCH_SPACE
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    return payload.get("search_space", payload)
+    if isinstance(payload, dict):
+        if "search_space" in payload and isinstance(payload["search_space"], dict):
+            return payload["search_space"]
+        if "search_space_path" in payload:
+            nested_path = Path(payload["search_space_path"])
+            if not nested_path.is_absolute():
+                nested_path = (ROOT / nested_path).resolve()
+            nested_payload = json.loads(nested_path.read_text(encoding="utf-8"))
+            if "search_space" in nested_payload and isinstance(nested_payload["search_space"], dict):
+                return nested_payload["search_space"]
+            if isinstance(nested_payload, dict):
+                return nested_payload
+        if all(isinstance(v, (list, tuple)) for v in payload.values()):
+            return payload
+    raise ValueError("Invalid search space file: expected a dict of list values or a config with search_space.")
 
 
 def _make_logger(output_dir: Path):
