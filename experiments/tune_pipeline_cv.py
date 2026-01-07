@@ -63,8 +63,22 @@ def _apply_overrides(cfg: PipelineConfig, overrides: Dict[str, Any]) -> Pipeline
             threshold = replace(threshold, value=float(value))
         elif key == "algorithm.negative_pct":
             algorithm = replace(algorithm, negative_pct=float(value))
+        elif key == "algorithm.candidate_top_k":
+            algorithm = replace(algorithm, candidate_top_k=int(value))
+        elif key == "algorithm.max_iterations":
+            algorithm = replace(algorithm, max_iterations=int(value))
+        elif key == "algorithm.min_point_distance":
+            algorithm = replace(algorithm, min_point_distance=float(value))
+        elif key == "algorithm.target_area_ratio":
+            algorithm = replace(algorithm, target_area_ratio=float(value))
         elif key == "preprocessing.slic.compactness":
             slic = replace(slic, compactness=float(value))
+        elif key == "preprocessing.slic.sigma":
+            slic = replace(slic, sigma=float(value))
+        elif key == "preprocessing.slic.min_size_factor":
+            slic = replace(slic, min_size_factor=float(value))
+        elif key == "preprocessing.slic.max_size_factor":
+            slic = replace(slic, max_size_factor=float(value))
         else:
             raise ValueError(f"Unsupported override key: {key}")
 
