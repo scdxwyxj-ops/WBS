@@ -31,7 +31,7 @@ from debug_tests.debug_test import (
     run_unsupervised_segmentation,
     StepRecord,
 )
-from metrics.metric import calculate_dice, calculate_map, calculate_miou
+from metrics.metric import calculate_dice, calculate_hd95, calculate_miou
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
@@ -209,7 +209,7 @@ def _run_dataset(
 
     miou, iou_list = calculate_miou(predictions, aligned_gt_masks)
     dice_mean, dice_list = calculate_dice(predictions, aligned_gt_masks)
-    map_mean, ap_list = calculate_map(predictions, aligned_gt_masks)
+    hd95_mean, hd95_list = calculate_hd95(predictions, aligned_gt_masks)
 
     # Persist per-image metrics.
     metrics_path = dataset_dir / "per_image_metrics.json"
@@ -246,9 +246,8 @@ def _run_dataset(
         "num_samples": len(predictions),
         "miou": float(miou),
         "dice": float(dice_mean),
-        "map": float(map_mean),
-        "ap_thresholds": list(np.arange(0.5, 1.0, 0.05)),
-        "ap_scores": [float(v) for v in ap_list],
+        "hd95": float(hd95_mean),
+        "hd95_list": [float(v) for v in hd95_list],
         "worst_percentage": 0.1,
     }
 
@@ -279,7 +278,7 @@ def main() -> None:
         overall_summary.append(summary)
         print(
             f"{dataset_name}: mIoU={summary['miou']:.4f}, "
-            f"Dice={summary['dice']:.4f}, mAP={summary['map']:.4f}"
+            f"Dice={summary['dice']:.4f}, HD95={summary['hd95']:.4f}"
         )
 
     combined_path = output_dir / "overall_summary.json"

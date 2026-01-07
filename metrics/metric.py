@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.ndimage import binary_erosion, distance_transform_edt
 
 def calculate_miou(mask_list1, mask_list2):
     """
@@ -94,3 +95,40 @@ def calculate_dice(mask_list1, mask_list2):
             dice = 2 * intersection / total
         dice_list.append(dice)
     return np.mean(dice_list), dice_list
+
+
+def _surface_distances(mask_pred: np.ndarray, mask_gt: np.ndarray) -> np.ndarray:
+    pred = np.asarray(mask_pred, dtype=bool)
+    gt = np.asarray(mask_gt, dtype=bool)
+    if pred.shape != gt.shape:
+        raise ValueError("mask_pred and mask_gt must have the same shape for HD95.")
+    if pred.sum() == 0 and gt.sum() == 0:
+        return np.array([0.0], dtype=float)
+    if pred.sum() == 0 or gt.sum() == 0:
+        return np.array([np.inf], dtype=float)
+
+    pred_surf = np.logical_xor(pred, binary_erosion(pred))
+    gt_surf = np.logical_xor(gt, binary_erosion(gt))
+
+    dt_pred = distance_transform_edt(~pred_surf)
+    dt_gt = distance_transform_edt(~gt_surf)
+
+    dist_gt_to_pred = dt_pred[gt_surf]
+    dist_pred_to_gt = dt_gt[pred_surf]
+    return np.concatenate([dist_gt_to_pred, dist_pred_to_gt]).astype(float)
+
+
+def calculate_hd95(mask_list_pred, mask_list_gt, percentile: float = 95.0):
+    """
+    Calculate the mean 95th percentile Hausdorff distance (HD95) for two lists of masks.
+    """
+    assert len(mask_list_pred) == len(mask_list_gt), "Mask list lengths do not match."
+    hd_list = []
+    for pred, gt in zip(mask_list_pred, mask_list_gt):
+        distances = _surface_distances(pred, gt)
+        if np.isinf(distances).any():
+            hd = np.inf
+        else:
+            hd = float(np.percentile(distances, percentile))
+        hd_list.append(hd)
+    return float(np.mean(hd_list)), hd_list

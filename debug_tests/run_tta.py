@@ -46,7 +46,7 @@ from image_processings.tta import (
     default_multi_view_augment,
     apply_lora_to_mask_decoder,
 )
-from metrics.metric import calculate_miou, calculate_dice, calculate_map
+from metrics.metric import calculate_miou, calculate_dice, calculate_hd95
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
@@ -657,12 +657,12 @@ def main() -> None:
     miou_after, _ = calculate_miou(adapted, aligned_gt_masks)
     dice_before_mean, _ = calculate_dice(predictions, aligned_gt_masks)
     dice_after_mean, _ = calculate_dice(adapted, aligned_gt_masks)
-    map_before, _ = calculate_map(predictions, aligned_gt_masks)
-    map_after, _ = calculate_map(adapted, aligned_gt_masks)
+    hd95_before, _ = calculate_hd95(predictions, aligned_gt_masks)
+    hd95_after, _ = calculate_hd95(adapted, aligned_gt_masks)
 
     print("\n=== Summary ===")
-    print(f"Before TTA: mIoU={miou_before:.4f}, Dice={dice_before_mean:.4f}, mAP={map_before:.4f}")
-    print(f"After  TTA: mIoU={miou_after:.4f}, Dice={dice_after_mean:.4f}, mAP={map_after:.4f}")
+    print(f"Before TTA: mIoU={miou_before:.4f}, Dice={dice_before_mean:.4f}, HD95={hd95_before:.4f}")
+    print(f"After  TTA: mIoU={miou_after:.4f}, Dice={dice_after_mean:.4f}, HD95={hd95_after:.4f}")
 
     summary = {
         "num_samples": len(images),
@@ -670,8 +670,8 @@ def main() -> None:
         "miou_after": float(miou_after),
         "dice_before": float(dice_before_mean),
         "dice_after": float(dice_after_mean),
-        "map_before": float(map_before),
-        "map_after": float(map_after),
+        "hd95_before": float(hd95_before),
+        "hd95_after": float(hd95_after),
     }
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (output_dir / "per_image_metrics.json").write_text(json.dumps(per_image_metrics, indent=2), encoding="utf-8")
