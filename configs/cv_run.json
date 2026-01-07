@@ -1,0 +1,9 @@
+{
+  "name": "cv_5fold_pipeline",
+  "pipeline_cfg": "configs/pipeline.json",
+  "datasets": ["dataset_v0", "cropped"],
+  "folds": 5,
+  "seed": 42,
+  "search_space_path": "compartments/cv_search.json",
+  "max_samples": null
+}
