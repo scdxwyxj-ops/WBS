@@ -27,7 +27,7 @@ from configs.pipeline_config import (
 )
 from datasets.dataset import load_dataset
 from experiments.runner import prepare_output_dir, save_metadata, set_seed
-from metrics.metric import calculate_dice, calculate_miou
+from metrics.metric import calculate_dice, calculate_hd95, calculate_miou
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from debug_tests.run_tta import run_segmentation_with_info
@@ -101,7 +101,7 @@ def _evaluate_images(
     images: List[np.ndarray],
     masks: List[np.ndarray],
     indices: Iterable[int],
-) -> Tuple[float, float]:
+) -> Tuple[float, float, float]:
     preds: List[np.ndarray] = []
     gts: List[np.ndarray] = []
     eval_indices = list(indices)
@@ -120,7 +120,8 @@ def _evaluate_images(
             gts.append(gt)
     miou, _ = calculate_miou(preds, gts)
     dice, _ = calculate_dice(preds, gts)
-    return float(miou), float(dice)
+    hd95, _ = calculate_hd95(preds, gts)
+    return float(miou), float(dice), float(hd95)
 
 
 def _load_search_space(path: str | None) -> Dict[str, List[Any]]:
@@ -237,7 +238,7 @@ def main() -> None:
             "folds": [],
         }
 
-        fold_scores: List[Tuple[float, float]] = []
+        fold_scores: List[Tuple[float, float, float]] = []
         for dataset_name in dataset_names:
             images, masks, _ = load_dataset(
                 dataset_name,
@@ -251,11 +252,11 @@ def main() -> None:
             folds = _make_folds(len(images), args.folds, args.seed)
             for fold_idx, val_indices in enumerate(folds):
                 fold_cfg = replace(cfg, dataset=replace(cfg.dataset, name=dataset_name))
-                miou, dice = _evaluate_images(fold_cfg, predictor, images, masks, val_indices)
-                fold_scores.append((miou, dice))
+                miou, dice, hd95 = _evaluate_images(fold_cfg, predictor, images, masks, val_indices)
+                fold_scores.append((miou, dice, hd95))
                 log(
                     f"[{run_name}] {dataset_name} fold={fold_idx} "
-                    f"count={len(val_indices)} mIoU={miou:.4f} Dice={dice:.4f}"
+                    f"count={len(val_indices)} mIoU={miou:.4f} Dice={dice:.4f} HD95={hd95:.4f}"
                 )
                 run_summary["folds"].append(
                     {
@@ -264,19 +265,23 @@ def main() -> None:
                         "count": int(len(val_indices)),
                         "miou": miou,
                         "dice": dice,
+                        "hd95": hd95,
                     }
                 )
 
         if fold_scores:
             mean_miou = float(np.mean([s[0] for s in fold_scores]))
             mean_dice = float(np.mean([s[1] for s in fold_scores]))
+            mean_hd95 = float(np.mean([s[2] for s in fold_scores]))
         else:
             mean_miou = 0.0
             mean_dice = 0.0
+            mean_hd95 = 0.0
 
         run_summary["mean_miou"] = mean_miou
         run_summary["mean_dice"] = mean_dice
-        log(f"[{run_name}] mean mIoU={mean_miou:.4f} Dice={mean_dice:.4f}")
+        run_summary["mean_hd95"] = mean_hd95
+        log(f"[{run_name}] mean mIoU={mean_miou:.4f} Dice={mean_dice:.4f} HD95={mean_hd95:.4f}")
         all_results.append(run_summary)
 
     all_results.sort(key=lambda r: r["mean_miou"], reverse=True)
@@ -285,14 +290,25 @@ def main() -> None:
     top = all_results[0] if all_results else None
     (output_dir / "cv_best.json").write_text(json.dumps(top, indent=2), encoding="utf-8")
     if top:
-        log(f"Best run: {top['name']} mIoU={top['mean_miou']:.4f} Dice={top['mean_dice']:.4f}")
+        log(
+            f"Best run: {top['name']} mIoU={top['mean_miou']:.4f} "
+            f"Dice={top['mean_dice']:.4f} HD95={top.get('mean_hd95', 0.0):.4f}"
+        )
 
     csv_path = output_dir / "cv_results.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["name", "mean_miou", "mean_dice", "overrides"])
+        writer.writerow(["name", "mean_miou", "mean_dice", "mean_hd95", "overrides"])
         for row in all_results:
-            writer.writerow([row["name"], row["mean_miou"], row["mean_dice"], json.dumps(row["overrides"])])
+            writer.writerow(
+                [
+                    row["name"],
+                    row["mean_miou"],
+                    row["mean_dice"],
+                    row.get("mean_hd95", 0.0),
+                    json.dumps(row["overrides"]),
+                ]
+            )
 
 
 if __name__ == "__main__":
