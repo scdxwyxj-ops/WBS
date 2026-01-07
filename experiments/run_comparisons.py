@@ -15,14 +15,16 @@ from experiments.compare_baselines import run_from_config
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run baseline comparisons for all configs.")
-    parser.add_argument("--compartments", default=str(ROOT / "compartments"))
+    parser.add_argument("--comparisons-dir", default=str(ROOT / "configs" / "comparisons"))
     parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
-    cfg_dir = Path(args.compartments)
+    cfg_dir = Path(args.comparisons_dir)
     if not cfg_dir.exists():
-        raise FileNotFoundError(f"Missing compartments directory: {cfg_dir}")
+        raise FileNotFoundError(
+            f"Missing comparisons directory: {cfg_dir}"
+        )
 
     configs = sorted(cfg_dir.glob("*.json"))
     if not configs:

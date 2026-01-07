@@ -1,0 +1,13 @@
+{
+  "name": "mst",
+  "datasets": ["dataset_v0", "cropped"],
+  "target_long_edge": 260,
+  "max_samples": null,
+  "method": {
+    "type": "mst",
+    "n_segments": 200,
+    "compactness": 10.0,
+    "sigma": 1.0,
+    "edge_threshold": 10.0
+  }
+}

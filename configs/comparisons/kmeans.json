@@ -1,0 +1,11 @@
+{
+  "name": "kmeans",
+  "datasets": ["dataset_v0", "cropped"],
+  "target_long_edge": 260,
+  "max_samples": null,
+  "method": {
+    "type": "kmeans",
+    "k": 2,
+    "color_space": "lab"
+  }
+}
