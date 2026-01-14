@@ -23,7 +23,7 @@ SAM2_DIR = ROOT_DIR.parent / "sam2"
 if SAM2_DIR.exists() and str(SAM2_DIR) not in sys.path:
     sys.path.insert(0, str(SAM2_DIR))
 
-from configs.pipeline_config import PipelineConfig, load_pipeline_config
+from configs.pipeline_config import PipelineConfig, apply_pipeline_overrides, load_pipeline_config
 from datasets.dataset import load_dataset
 from debug_tests.debug_test import (
     MAIN_DIR,
@@ -263,6 +263,11 @@ def main() -> None:
         constants = dict(constants)
         constants["pipeline_cfg"] = override_cfg
     pipeline_cfg = load_pipeline_config(MAIN_DIR / constants["pipeline_cfg"])
+    override_path = os.environ.get("PIPELINE_OVERRIDES")
+    if override_path:
+        override_payload = json.loads(Path(override_path).read_text(encoding="utf-8"))
+        overrides = override_payload.get("overrides", override_payload)
+        pipeline_cfg = apply_pipeline_overrides(pipeline_cfg, overrides)
     _set_seed(pipeline_cfg.algorithm.seed)
 
     output_dir = _ensure_output_dir()

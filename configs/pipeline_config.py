@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -139,3 +139,83 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         algorithm=algorithm_cfg,
         sam=sam_cfg,
     )
+
+
+def apply_pipeline_overrides(cfg: PipelineConfig, overrides: Dict[str, Any]) -> PipelineConfig:
+    """Apply a flat override dict (dot-separated keys) to a PipelineConfig."""
+    dataset = cfg.dataset
+    preprocessing = cfg.preprocessing
+    slic = preprocessing.slic
+    algorithm = cfg.algorithm
+    threshold = algorithm.threshold
+    sam_cfg = cfg.sam
+
+    for key, value in overrides.items():
+        if key == "dataset.name":
+            dataset = replace(dataset, name=str(value))
+        elif key == "dataset.target_long_edge":
+            dataset = replace(dataset, target_long_edge=int(value) if value is not None else None)
+        elif key == "preprocessing.image_size":
+            preprocessing = replace(preprocessing, image_size=int(value))
+        elif key == "preprocessing.num_graph_nodes":
+            preprocessing = replace(preprocessing, num_graph_nodes=int(value))
+        elif key == "preprocessing.slic.compactness":
+            slic = replace(slic, compactness=float(value))
+        elif key == "preprocessing.slic.sigma":
+            slic = replace(slic, sigma=float(value))
+        elif key == "preprocessing.slic.min_size_factor":
+            slic = replace(slic, min_size_factor=float(value))
+        elif key == "preprocessing.slic.max_size_factor":
+            slic = replace(slic, max_size_factor=float(value))
+        elif key == "algorithm.threshold.value":
+            threshold = replace(threshold, value=float(value))
+        elif key == "algorithm.threshold.mode":
+            threshold = replace(threshold, mode=str(value))
+        elif key == "algorithm.negative_pct":
+            algorithm = replace(algorithm, negative_pct=float(value))
+        elif key == "algorithm.score_lower_bound":
+            algorithm = replace(algorithm, score_lower_bound=float(value))
+        elif key == "algorithm.seed":
+            algorithm = replace(algorithm, seed=None if value is None else int(value))
+        elif key == "algorithm.candidate_top_k":
+            algorithm = replace(algorithm, candidate_top_k=int(value))
+        elif key == "algorithm.max_iterations":
+            algorithm = replace(algorithm, max_iterations=int(value))
+        elif key == "algorithm.augment_positive_points":
+            algorithm = replace(algorithm, augment_positive_points=bool(value))
+        elif key == "algorithm.use_subset_points":
+            algorithm = replace(algorithm, use_subset_points=bool(value))
+        elif key == "algorithm.center_range":
+            algorithm = replace(algorithm, center_range=_as_tuple(value, length=2, name="center_range"))
+        elif key == "algorithm.min_point_distance":
+            algorithm = replace(algorithm, min_point_distance=float(value))
+        elif key == "algorithm.use_convex_hull":
+            algorithm = replace(algorithm, use_convex_hull=bool(value))
+        elif key == "algorithm.convex_hull_threshold":
+            algorithm = replace(algorithm, convex_hull_threshold=float(value))
+        elif key == "algorithm.deduplicate_mask_pool":
+            algorithm = replace(algorithm, deduplicate_mask_pool=bool(value))
+        elif key == "algorithm.mask_pool_iou_threshold":
+            algorithm = replace(algorithm, mask_pool_iou_threshold=float(value))
+        elif key == "algorithm.target_area_ratio":
+            algorithm = replace(algorithm, target_area_ratio=float(value))
+        elif key == "algorithm.initial_color_mode":
+            algorithm = replace(algorithm, initial_color_mode=str(value))
+        elif key == "algorithm.initial_positive_count":
+            algorithm = replace(algorithm, initial_positive_count=int(value))
+        elif key == "algorithm.selection_strategy":
+            algorithm = replace(algorithm, selection_strategy=str(value))
+        elif key == "sam.multimask_output":
+            sam_cfg = replace(sam_cfg, multimask_output=bool(value))
+        elif key == "sam.mask_prompt_source":
+            sam_cfg = replace(sam_cfg, mask_prompt_source=str(value))
+        elif key == "sam.refine_with_previous_low_res":
+            sam_cfg = replace(sam_cfg, refine_with_previous_low_res=bool(value))
+        elif key == "sam.refine_rounds":
+            sam_cfg = replace(sam_cfg, refine_rounds=int(value))
+        else:
+            raise ValueError(f"Unsupported override key: {key}")
+
+    preprocessing = replace(preprocessing, slic=slic)
+    algorithm = replace(algorithm, threshold=threshold)
+    return replace(cfg, dataset=dataset, preprocessing=preprocessing, algorithm=algorithm, sam=sam_cfg)

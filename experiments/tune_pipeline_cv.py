@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 
 from configs.pipeline_config import (
     PipelineConfig,
+    apply_pipeline_overrides,
     load_pipeline_config,
 )
 from datasets.dataset import load_dataset
@@ -52,39 +53,7 @@ def _make_folds(num_samples: int, folds: int, seed: int) -> List[np.ndarray]:
 
 
 def _apply_overrides(cfg: PipelineConfig, overrides: Dict[str, Any]) -> PipelineConfig:
-    dataset = cfg.dataset
-    preprocessing = cfg.preprocessing
-    slic = preprocessing.slic
-    algorithm = cfg.algorithm
-    threshold = algorithm.threshold
-
-    for key, value in overrides.items():
-        if key == "algorithm.threshold.value":
-            threshold = replace(threshold, value=float(value))
-        elif key == "algorithm.negative_pct":
-            algorithm = replace(algorithm, negative_pct=float(value))
-        elif key == "algorithm.candidate_top_k":
-            algorithm = replace(algorithm, candidate_top_k=int(value))
-        elif key == "algorithm.max_iterations":
-            algorithm = replace(algorithm, max_iterations=int(value))
-        elif key == "algorithm.min_point_distance":
-            algorithm = replace(algorithm, min_point_distance=float(value))
-        elif key == "algorithm.target_area_ratio":
-            algorithm = replace(algorithm, target_area_ratio=float(value))
-        elif key == "preprocessing.slic.compactness":
-            slic = replace(slic, compactness=float(value))
-        elif key == "preprocessing.slic.sigma":
-            slic = replace(slic, sigma=float(value))
-        elif key == "preprocessing.slic.min_size_factor":
-            slic = replace(slic, min_size_factor=float(value))
-        elif key == "preprocessing.slic.max_size_factor":
-            slic = replace(slic, max_size_factor=float(value))
-        else:
-            raise ValueError(f"Unsupported override key: {key}")
-
-    preprocessing = replace(preprocessing, slic=slic)
-    algorithm = replace(algorithm, threshold=threshold)
-    return replace(cfg, dataset=dataset, preprocessing=preprocessing, algorithm=algorithm)
+    return apply_pipeline_overrides(cfg, overrides)
 
 
 def _grid_from_space(space: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
@@ -184,6 +153,8 @@ def main() -> None:
             args.max_samples = int(cfg_payload.get("max_samples"))
         args.max_runs = cfg_payload.get("max_runs")
         args.early_stop_patience = cfg_payload.get("early_stop_patience")
+        args.run_final_inference = cfg_payload.get("run_final_inference", True)
+        args.final_inference_max_samples = cfg_payload.get("final_inference_max_samples")
 
     output_dir = prepare_output_dir("cv_tune_pipeline", args.output_dir)
     log = _make_logger(output_dir)
@@ -237,6 +208,7 @@ def main() -> None:
     log(f"Grid size: {total_runs} runs")
 
     best_miou = -1.0
+    best_payload: Dict[str, Any] = {}
     patience_counter = 0
 
     for run_idx, overrides in enumerate(grid):
@@ -298,6 +270,17 @@ def main() -> None:
         if mean_miou > best_miou:
             best_miou = mean_miou
             patience_counter = 0
+            best_payload = {
+                "name": run_name,
+                "mean_miou": mean_miou,
+                "mean_dice": mean_dice,
+                "mean_hd95": mean_hd95,
+                "overrides": overrides,
+            }
+            (output_dir / "best_so_far.json").write_text(
+                json.dumps(best_payload, indent=2),
+                encoding="utf-8",
+            )
         else:
             patience_counter += 1
 
@@ -330,6 +313,40 @@ def main() -> None:
                     json.dumps(row["overrides"]),
                 ]
             )
+
+    if top and getattr(args, "run_final_inference", True):
+        log("Running final inference with best overrides.")
+        best_cfg = _apply_overrides(base_cfg, top["overrides"])
+        final_dir = output_dir / "final_inference"
+        final_dir.mkdir(parents=True, exist_ok=True)
+        final_summaries: List[Dict[str, Any]] = []
+        for dataset_name in dataset_names:
+            images, masks, _ = load_dataset(
+                dataset_name,
+                target_long_edge=best_cfg.dataset.target_long_edge,
+                return_paths=True,
+            )
+            max_final = getattr(args, "final_inference_max_samples", None)
+            if max_final:
+                images = images[: int(max_final)]
+                masks = masks[: int(max_final)]
+            miou, dice, hd95 = _evaluate_images(best_cfg, predictor, images, masks, range(len(images)))
+            summary = {
+                "dataset": dataset_name,
+                "num_samples": len(images),
+                "miou": miou,
+                "dice": dice,
+                "hd95": hd95,
+            }
+            (final_dir / f"{dataset_name}_summary.json").write_text(
+                json.dumps(summary, indent=2),
+                encoding="utf-8",
+            )
+            final_summaries.append(summary)
+        (final_dir / "overall_summary.json").write_text(
+            json.dumps(final_summaries, indent=2),
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":

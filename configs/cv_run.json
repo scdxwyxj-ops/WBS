@@ -7,5 +7,7 @@
   "search_space_path": "configs/cv_search.json",
   "max_samples": 50,
   "max_runs": 2000,
-  "early_stop_patience": 100
+  "early_stop_patience": 100,
+  "run_final_inference": true,
+  "final_inference_max_samples": null
 }
