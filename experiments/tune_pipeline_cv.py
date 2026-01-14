@@ -166,6 +166,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--search", default=None, help="Optional JSON file with search_space dict.")
     parser.add_argument("--max-samples", type=int, default=None)
+    parser.add_argument("--max-runs", type=int, default=None)
+    parser.add_argument("--early-stop-patience", type=int, default=None)
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
@@ -180,6 +182,8 @@ def main() -> None:
         args.search = cfg_payload.get("search_space_path", args.search)
         if cfg_payload.get("max_samples") is not None:
             args.max_samples = int(cfg_payload.get("max_samples"))
+        args.max_runs = cfg_payload.get("max_runs")
+        args.early_stop_patience = cfg_payload.get("early_stop_patience")
 
     output_dir = prepare_output_dir("cv_tune_pipeline", args.output_dir)
     log = _make_logger(output_dir)
@@ -226,7 +230,14 @@ def main() -> None:
     )
     log(f"Loaded pipeline config: {args.pipeline_cfg}")
     log(f"Datasets: {dataset_names} | folds={args.folds} | seed={args.seed}")
-    log(f"Grid size: {len(grid)} runs")
+    total_runs = len(grid)
+    if args.max_runs is not None:
+        total_runs = min(total_runs, int(args.max_runs))
+        grid = grid[:total_runs]
+    log(f"Grid size: {total_runs} runs")
+
+    best_miou = -1.0
+    patience_counter = 0
 
     for run_idx, overrides in enumerate(grid):
         run_name = f"run_{run_idx:03d}"
@@ -283,6 +294,16 @@ def main() -> None:
         run_summary["mean_hd95"] = mean_hd95
         log(f"[{run_name}] mean mIoU={mean_miou:.4f} Dice={mean_dice:.4f} HD95={mean_hd95:.4f}")
         all_results.append(run_summary)
+
+        if mean_miou > best_miou:
+            best_miou = mean_miou
+            patience_counter = 0
+        else:
+            patience_counter += 1
+
+        if args.early_stop_patience is not None and patience_counter >= int(args.early_stop_patience):
+            log(f"Early stop triggered: no improvement for {patience_counter} runs.")
+            break
 
     all_results.sort(key=lambda r: r["mean_miou"], reverse=True)
     (output_dir / "cv_results.json").write_text(json.dumps(all_results, indent=2), encoding="utf-8")
