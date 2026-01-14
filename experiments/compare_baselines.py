@@ -279,7 +279,11 @@ def run_from_config(
             max_samples=int(max_samples_override),
             method=config.method,
         )
-    output_dir = prepare_output_dir(f"baseline_{config.name}", output_root)
+    if output_root:
+        output_dir = Path(output_root) / config.name
+        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir = prepare_output_dir(f"baseline_{config.name}", output_root)
     log = _make_logger(output_dir)
     save_metadata(
         output_dir,
