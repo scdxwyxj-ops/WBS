@@ -1,31 +1,84 @@
-## Simplified SAM2 TTA (Pseudo-label + LoRA + Entropy/Consistency)
+## SAM2 Pipeline Only (No TTA)
 
 ### Inputs
 - Test image `I`
-- Base pipeline `BasePipeline(...)` → pseudo label mask `M_hat` and prompt `P`
-- SAM2 predictor (student) `f_theta` with LoRA on decoder only
-- Config: `T` steps, loss weights `lambda_e, lambda_c`, augment family `g(...)`
+- Pipeline config `C` (SLIC, graph nodes, sampling rules, thresholds, selection strategy)
+- SAM2 predictor `F`
 
 ### Outputs
-- Adapted LoRA params `theta_T` (per-image; reset for next image)
-- Final prediction `S*`
+- Final mask `M*`
+- Optional mask pool `P = {M_i, score_i}`
 
 ---
 
-### Step 0 — Pseudo-label supervision (once)
-1) Run base pipeline on `I`: `M_hat, P <- BasePipeline(I)`  
-2) Freeze prompts for TTA: use `P` as-is (no re-search).
+### Textbook Flowchart (Pipeline)
 
-### Step 1 — LoRA fine-tuning (T steps)
-For `t = 1..T`:
-1) Predict on original view: `S0 = f_theta(I, P)`  
-2) Sample two augmented views `g_v` (scale/flip), predict `S_v`, warp back `S_v_hat = g_v^{-1}(S_v)`  
-3) Losses:
-   - Pseudo-label loss: `L_sup = BCE(S0, M_hat)`  
-   - Entropy loss (weightable): `L_entropy = H(S0)`  
-   - Consistency loss (weightable): `L_cons = 1 - SoftDice(S0, S_v_hat)`  
-4) Total loss: `L = L_sup + lambda_e * L_entropy + lambda_c * L_cons`  
-5) Backprop on LoRA params only; optimizer step.
+```
+┌──────────────┐
+│  Input I, C  │
+└──────┬───────┘
+       │
+       v
+┌────────────────────────────┐
+│ Preprocess (resize, SLIC)  │
+└──────┬─────────────────────┘
+       │
+       v
+┌────────────────────────────┐
+│ Build graph over segments  │
+└──────┬─────────────────────┘
+       │
+       v
+┌────────────────────────────┐
+│ Init prompts (center)      │
+└──────┬─────────────────────┘
+       │
+       v
+┌────────────────────────────┐
+│ SAM2 predict logits/mask   │
+└──────┬─────────────────────┘
+       │
+       v
+┌────────────────────────────┐
+│ Score + add to mask pool   │
+└──────┬─────────────────────┘
+       │
+       v
+┌────────────────────────────┐
+│ Update prompts (boundary)  │
+└──────┬─────────────────────┘
+       │
+       v
+┌────────────────────────────┐
+│ Loop until max_iters       │
+└──────┬─────────────────────┘
+       │
+       v
+┌────────────────────────────┐
+│ Select final mask M*       │
+└────────────────────────────┘
+```
 
-### Step 2 — Final output
-- `S* = f_theta(I, P)` after `T` steps; reset LoRA for next image.
+---
+
+### Algorithm Steps
+
+1) **Preprocess**  
+Resize image to target size, run SLIC, build segment graph.
+
+2) **Initialize prompts**  
+Pick initial positive points near the image center (configurable range).
+
+3) **Iterative expansion**  
+Repeat up to `max_iterations`:  
+   - Run SAM2 → logits, mask, score  
+   - Add mask + score to pool  
+   - Update prompts using confident boundary points
+
+4) **Mask pool selection**  
+Choose final `M*` by config strategy:  
+   - `score_top_k` (pick best score), or  
+   - `cluster_middle` (select middle cluster, then best score)
+
+5) **Output**  
+Return final mask `M*` and optional pool for analysis.

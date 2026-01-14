@@ -1,6 +1,6 @@
 {
   "dataset": {
-    "name": "dataset_v0",
+    "name": "original",
     "target_long_edge": 260
   },
   "preprocessing": {
