@@ -352,7 +352,7 @@ def run_segmentation_with_info(
         )
         info.mask_pool = list(clustered_entries)
         pool = info.get_mask_pool()
-        selected_entry = max(pool, key=lambda e: np.asarray(e.get("mask", 0)).sum(), default=None)
+        selected_entry = max(pool, key=lambda e: e.get("score", 0.0), default=None)
         pool_stats = {}
     elif selection_strategy == "entropy":
         selected_entry, pool_stats, _ = pick_obj_using_entropy(
