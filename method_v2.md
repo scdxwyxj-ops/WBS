@@ -12,7 +12,7 @@
   - number of superpixels: \(K\) (default: 36; tuned by greedy search)
   - compactness: \(c\)
   - color space: RGB
-- Center window ratio: \(\alpha \in (0, 0.5)\) (default range you use: 0.3–0.7, i.e. \([\alpha,1-\alpha]^2\))
+- Center window ratio: \(\alpha \in (0, 0.5)\) (configurable; implemented as `center_range` in config, default 0.1–0.9)
 - Init prompt counts:
   - positives: \(n_+\)
   - negatives: \(m_-\)
@@ -47,8 +47,8 @@
 **Probability map:**
 - \(p(x) = \sigma(\ell(x))\)
 
-**Soft vote (mean prob in superpixel):**
-- \(v_j = \frac{1}{|\Omega_j|}\sum_{x\in\Omega_j} p(x)\)
+**Soft vote (mean logits in superpixel):**
+- \(v_j = \frac{1}{|\Omega_j|}\sum_{x\in\Omega_j} \ell(x)\)
 
 ---
 
@@ -120,46 +120,29 @@ For \(t = 1,2,\dots,T\):
    - \(j^\star \leftarrow \arg\max_{j \notin (\texttt{PosIdx}\cup\texttt{NegIdx})} v_j\)
 
 13. Stop condition (main):
-   - If \(j^\star \in \mathcal{B}\): **break**
+   - Boundary candidates are excluded, so the loop stops when no valid candidates remain.
 
-14. Optional Top-\(q\) rerun (D fix: deterministic definition):
-   - Let \(\mathcal{J}_{\text{top}}\) be the top-\(q\) indices by \(v_j\), with the same exclusion rule.
-   - For each \(j\in\mathcal{J}_{\text{top}}\):
-     - \((\ell^{(j)}, M^{(j)}, s^{(j)}) \leftarrow \mathrm{SAM2}(I', M^{\text{prompt}}, P \cup \{(\mu_j, +1)\})\)
-   - Choose \(j^\star \leftarrow \arg\max_{j\in\mathcal{J}_{\text{top}}} s^{(j)}\)
-   - Set \((M_t, s_t) \leftarrow (M^{(j^\star)}, s^{(j^\star)})\)
+14. Optional Top-\(q\) rerun:
+   - Not used in the current code path; candidate_top_k only limits which candidates are *considered*.
 
 15. Add the chosen positive prompt:
    - \(P \leftarrow P \cup \{(\mu_{j^\star}, +1)\}\)
    - \(\texttt{PosIdx} \leftarrow \texttt{PosIdx} \cup \{j^\star\}\)
 
-16. Optional non-convex refinement (B fix: no false convex guarantees):
-   - Let \(s_0 \leftarrow \mathrm{FGRegion}(M_t)\)  (foreground region from current mask)
-   - Let \(s_1 \leftarrow \mathrm{ConvHull}(s_0)\)
-   - Compute area ratio:
-     \[
-       r = \frac{|s_0|}{|s_1|}
-     \]
-   - If \(r < \tau_{\text{convex}}\):
-     - \(s_2 \leftarrow s_1 \setminus s_0\)
-     - \(s_3 \leftarrow \mathrm{LargestCC}(s_2)\)
-     - Add positive point at \(c(s_3)\):
-       \[
-         P \leftarrow P \cup \{(c(s_3), +1)\}
-       \]
+16. Optional non-convex refinement:
+   - Apply selective convex hull to **prompt mask only** when enabled.
+   - No extra point is added; the prompt mask is replaced by the hull if needed.
 
-17. Optional positive-point pruning (E fix: deterministic keep policy):
+17. Optional positive-point pruning (deterministic keep policy):
    - Consider only positive points in \(P\).
    - If two positive points are within Euclidean distance \(< d_{\min}\),
-     **keep the latest added one** (deterministic) and remove the others.
+     keep the latest added one and remove earlier ones.
 
-18. Update next mask prompt (positive superpixel union minus negative union):
+18. Update next mask prompt:
    \[
      M^{\text{prompt}}
      \leftarrow
      \Big(\bigcup_{(u,+1)\in P} \Omega_{S(u)}\Big)
-     \setminus
-     \Big(\bigcup_{(u,-1)\in P} \Omega_{S(u)}\Big)
    \]
 
 19. Append candidate:
@@ -188,7 +171,7 @@ Let remaining candidates be \(\{(M_i, s_i)\}_{i=1}^{N'}\).
 
 Let the three clusters be ordered by centroid area, and denote the middle one as \(C_{\text{mid}}\).
 
-### 5.4 Default final choice (as you requested)
+### 5.4 Default final choice
 - Return the **largest-area mask in the middle cluster**:
   \[
     M^\star = \arg\max_{M_i \in C_{\text{mid}}} |M_i|

@@ -53,9 +53,6 @@ class Node():
         coords = np.argwhere(self.mask)
         center = tuple(coords.mean(axis=0))[::-1]
         self.center = center
-        if center[0]/self.shape[0] > 0.3 and center[0]/self.shape[0]< 0.7 and center[1]/self.shape[1] > 0.3 and center[1]/self.shape[1] < 0.7:
-            if not self.is_edge:
-                self.is_center = True
         return center
     
     ##-------------------------- is edge----------------------##

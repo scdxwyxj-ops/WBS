@@ -186,7 +186,7 @@ class Info:
         positive_quota = max(1, int(self.settings.initial_positive_count))
         promoted = 0
         for node in nodes_by_color:
-            if node.is_center and self.labels[node.index] != 1:
+            if self._is_in_center(node.center) and self.labels[node.index] != 1:
                 self.labels[node.index] = 1
                 node.label = 1
                 self.positive_point_coords.append(self._round_point(node.center))
@@ -204,6 +204,13 @@ class Info:
                     break
 
         self._update_prompt_mask()
+
+    def _is_in_center(self, point: Tuple[float, float]) -> bool:
+        height, width = self.image.shape[:2]
+        low, high = self.settings.center_range
+        x_low, x_high = width * low, width * high
+        y_low, y_high = height * low, height * high
+        return x_low <= point[0] <= x_high and y_low <= point[1] <= y_high
 
     @staticmethod
     def _round_point(point: Tuple[float, float]) -> Tuple[float, float]:
@@ -561,15 +568,13 @@ class Info:
         if not center_points:
             return list(point_coords_list)
 
-        rng = np.random.default_rng(self.settings.seed if self.settings.seed is not None else 0)
-        order = rng.permutation(len(center_points))
-
-        for idx in order:
-            p = center_points[idx]
+        # Deterministic: keep the latest points first, drop earlier ones if too close.
+        for p in reversed(center_points):
             if all(
                 np.hypot(p[0] - fp[0], p[1] - fp[1]) >= self.settings.min_point_distance
                 for fp in filtered
             ):
                 filtered.append(p)
 
+        filtered.reverse()
         return filtered if filtered else list(center_points)
