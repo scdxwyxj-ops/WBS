@@ -111,7 +111,9 @@ def _run_prediction(
 
     logits = logits[0]
     mask = logits > 0
-    score = float(scores[0]) if isinstance(scores, Sequence) else float(scores)
+    score_val = scores[0] if isinstance(scores, Sequence) else scores
+    score_arr = np.asarray(score_val).reshape(-1)
+    score = float(score_arr[0]) if score_arr.size else 0.0
     return CandidateEvaluation(
         candidate_id=bundle.candidate_id or -1,
         logits=logits,
