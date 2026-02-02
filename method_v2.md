@@ -3,22 +3,33 @@
 
 ## 1. Inputs / Hyper-parameters
 
+### Required inputs
 - Image: \(I\)
 - Resize long side: \(L\) (default: 260). Short side scaled proportionally.
 - SLIC:
-  - number of superpixels: \(K\) (default: 36; tuned by greedy search)
+  - number of superpixels: \(K\) (default: 36)
   - compactness: \(c\)
   - color space: RGB
-- Center window range: \([l, h]\subset(0,1)\) (implemented as `center_range`, default 0.1–0.9)
-- Init prompt counts:
-  - positives: \(n_+\)
-  - negatives: \(m_-\)
-- Max iterations: \(T\) (safety cap)
-- Candidate pool size: \(q\) (implemented as `candidate_top_k`, default: 3)
-- Optional non-convex threshold: \(\tau_{\text{convex}}\) (default: 0.85)
-- Optional positive-point prune distance: \(d_{\min}\)
-- Mask sequence de-dup IoU threshold: \(\tau_{\text{iou}}\)
-- Clustering: k-means clusters \(k=3\)
+  - sigma: \(\sigma\)
+  - min size factor: \(f_{\min}\)
+  - max size factor: \(f_{\max}\)
+
+### Core hyper-parameters (tune first)
+- Center window range: \([l, h]\subset(0,1)\) (`center_range`)
+- Init prompt counts: positives \(n_+\), negatives \(m_-\)
+- Foreground update threshold: \(\tau\) (`threshold.value`)
+- Subset-point filtering: \(\texttt{use\_subset\_points}\)
+- Convex-hull refinement: \(\texttt{use\_convex\_hull}\)
+- Mask pool de-dup: \(\texttt{deduplicate\_mask\_pool}\)
+- Non-convex threshold: \(\tau_{\text{convex}}\) (`convex_hull_threshold`)
+- Positive-point prune distance: \(d_{\min}\)
+- Mask de-dup IoU threshold: \(\tau_{\text{iou}}\) (`mask_pool_iou_threshold`)
+
+### Secondary hyper-parameters (usually keep default)
+- Candidate pool size: \(q\) (`candidate_top_k`)
+- Max iterations: \(T\)
+- Initial color mode: \(\texttt{initial\_color\_mode}\)
+
 
 ---
 
