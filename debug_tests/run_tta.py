@@ -245,6 +245,7 @@ def run_segmentation_with_info(
         debug_mode=False,
         mask_prompt_source=config.sam.mask_prompt_source,
     )
+    info.current_iteration = 0
 
     history: List[StepRecord] = []
 
@@ -276,6 +277,7 @@ def run_segmentation_with_info(
     )
 
     for iteration in range(1, config.algorithm.max_iterations + 1):
+        info.current_iteration = iteration
         info.update_from_logits(logits)
         candidates = info.get_candidates()
         if not candidates:

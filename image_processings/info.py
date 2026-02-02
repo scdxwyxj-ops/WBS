@@ -149,6 +149,9 @@ class Info:
         self.pool_stats: Optional[Dict[str, Dict[str, float]]] = None
         self.selected_entry: Optional[Dict[str, Any]] = None
         self.selection_metadata: Dict[str, Any] = {}
+        self.current_iteration: int = 0
+        self.convex_hull_triggered: bool = False
+        self.positive_point_records: List[Dict[str, Any]] = []
 
         self._initialise_prompt_points()
 
@@ -190,7 +193,7 @@ class Info:
             if self._is_in_center(node.center) and self.labels[node.index] != 1:
                 self.labels[node.index] = 1
                 node.label = 1
-                self.positive_point_coords.append(self._round_point(node.center))
+                self._add_positive_point(self._round_point(node.center), source="initial_positive")
                 promoted += 1
                 if promoted >= positive_quota:
                     break
@@ -201,7 +204,7 @@ class Info:
                 if self.labels[node.index] != 1:
                     self.labels[node.index] = 1
                     node.label = 1
-                    self.positive_point_coords.append(self._round_point(node.center))
+                    self._add_positive_point(self._round_point(node.center), source="initial_fallback")
                     break
 
         self._update_prompt_mask()
@@ -217,6 +220,18 @@ class Info:
     def _round_point(point: Tuple[float, float]) -> Tuple[float, float]:
         return (float(point[0]), float(point[1]))
 
+    def _add_positive_point(self, point: Tuple[float, float], *, source: str) -> None:
+        if point not in self.positive_point_coords:
+            self.positive_point_coords.append(point)
+        self.positive_point_records.append(
+            {
+                "point": point,
+                "iteration": int(self.current_iteration),
+                "source": source,
+                "convex_hull_triggered": bool(self.convex_hull_triggered),
+            }
+        )
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -230,6 +245,7 @@ class Info:
         self.mask = logits > 0
         self.next_iter_points = []
         self._aug_point_added = False
+        self.convex_hull_triggered = False
         self.threshold = self._compute_threshold()
         self._update_foreground_labels()
 
@@ -268,8 +284,7 @@ class Info:
             node = self.node_list[node_id]
             node.label = 1
             point = self._round_point(node.center)
-            if point not in self.positive_point_coords:
-                self.positive_point_coords.append(point)
+            self._add_positive_point(point, source="candidate_commit")
             self.prompt_mask = np.logical_or(self.prompt_mask, node.mask)
             self.next_iter_points.append(point)
 
@@ -414,7 +429,7 @@ class Info:
             if self.labels[idx] == -1:
                 self.labels[idx] = 1
                 self.node_list[idx].label = 1
-                self.positive_point_coords.append(self._round_point(self.node_list[idx].center))
+                self._add_positive_point(self._round_point(self.node_list[idx].center), source="foreground_update")
 
         self._update_prompt_mask()
 
@@ -445,6 +460,8 @@ class Info:
 
         if self.settings.use_convex_hull:
             hull = self.apply_selective_convex_hull(mask, threshold=self.settings.convex_hull_threshold)
+            if not np.array_equal(hull > 0, mask > 0):
+                self.convex_hull_triggered = True
             return (hull > 0).astype(np.uint8)
         return mask
 
@@ -459,6 +476,7 @@ class Info:
             new_point = self.add_more_pos_points(mask_origin, aug_bool, existing)
             if new_point is not None:
                 self.logger.info("add a new pos point, %s", new_point)
+                self._add_positive_point(self._round_point(new_point), source="augmented_point")
                 self._aug_point_added = True
                 return new_point
             self._aug_point_added = True
