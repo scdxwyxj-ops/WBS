@@ -172,10 +172,11 @@ class Info:
         return nodes
 
     def _initialise_prompt_points(self) -> None:
-        nodes_by_color = sorted(self.node_list, key=lambda n: n.color, reverse=True)
+        nodes_by_color_desc = sorted(self.node_list, key=lambda n: n.color, reverse=True)
+        nodes_by_color_asc = list(reversed(nodes_by_color_desc))
 
         negative_quota = max(1, int(round(self.settings.negative_pct * self.num_segments)))
-        for node in nodes_by_color:
+        for node in nodes_by_color_asc:
             if len(self.negative_point_coords) >= negative_quota:
                 break
             if node.is_edge and self.labels[node.index] != 0:
@@ -185,7 +186,7 @@ class Info:
 
         positive_quota = max(1, int(self.settings.initial_positive_count))
         promoted = 0
-        for node in nodes_by_color:
+        for node in nodes_by_color_desc:
             if self._is_in_center(node.center) and self.labels[node.index] != 1:
                 self.labels[node.index] = 1
                 node.label = 1
@@ -196,7 +197,7 @@ class Info:
 
         if promoted == 0:
             # fallback: choose the highest-ranked node even if not marked center
-            for node in nodes_by_color:
+            for node in nodes_by_color_desc:
                 if self.labels[node.index] != 1:
                     self.labels[node.index] = 1
                     node.label = 1
