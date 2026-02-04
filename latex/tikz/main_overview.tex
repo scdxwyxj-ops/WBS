@@ -1,0 +1,39 @@
+\documentclass{standalone}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+
+\begin{document}
+\tikzset{
+  block/.style={
+    rectangle,
+    rounded corners,
+    draw=black,
+    thick,
+    fill=blue!10,
+    minimum width=4.0cm,
+    minimum height=1.0cm,
+    align=center,
+    font=\sffamily
+  },
+  arrow/.style={
+    ->,
+    thick,
+    >=Stealth
+  }
+}
+
+\begin{tikzpicture}[node distance=1.2cm]
+  \node[block] (A) {Input Image};
+  \node[block, below=of A] (B) {Preprocess and Superpixels};
+  \node[block, below=of B] (C) {Initialize Prompts};
+  \node[block, below=of C] (D) {Iterative Prompting with SAM2};
+  \node[block, below=of D] (E) {Final Mask Selection};
+  \node[block, below=of E] (F) {Output Mask};
+
+  \draw[arrow] (A) -- (B);
+  \draw[arrow] (B) -- (C);
+  \draw[arrow] (C) -- (D);
+  \draw[arrow] (D) -- (E);
+  \draw[arrow] (E) -- (F);
+\end{tikzpicture}
+\end{document}

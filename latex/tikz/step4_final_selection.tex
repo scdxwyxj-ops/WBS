@@ -1,0 +1,50 @@
+\documentclass{standalone}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+
+\begin{document}
+\tikzset{
+  block/.style={
+    rectangle,
+    rounded corners,
+    draw=black,
+    thick,
+    fill=blue!10,
+    minimum width=3.8cm,
+    minimum height=1.0cm,
+    align=center,
+    font=\sffamily
+  },
+  decision/.style={
+    diamond,
+    draw=black,
+    thick,
+    fill=blue!10,
+    aspect=2,
+    align=center,
+    font=\sffamily
+  },
+  arrow/.style={
+    ->,
+    thick,
+    >=Stealth
+  }
+}
+
+\begin{tikzpicture}[node distance=1.4cm and 2.4cm]
+  \node[block] (A) {Candidate Pool $Q$};
+  \node[block, below=of A] (B) {IoU De-duplication};
+  \node[decision, below=of B] (C) {Remaining Masks\\$\ge 3$?};
+  \node[block, below left=of C] (D) {Select Max-Score Mask};
+  \node[block, below right=of C] (E) {Cluster Masks by Area};
+  \node[block, below=of E] (F) {Select Middle Cluster};
+  \node[block, below=of F] (G) {Pick Max-Score Mask};
+
+  \draw[arrow] (A) -- (B);
+  \draw[arrow] (B) -- (C);
+  \draw[arrow] (C) -- node[left]{No} (D);
+  \draw[arrow] (C) -- node[right]{Yes} (E);
+  \draw[arrow] (E) -- (F);
+  \draw[arrow] (F) -- (G);
+\end{tikzpicture}
+\end{document}

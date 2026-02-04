@@ -1,0 +1,57 @@
+\documentclass{standalone}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+
+\begin{document}
+\tikzset{
+  block/.style={
+    rectangle,
+    rounded corners,
+    draw=black,
+    thick,
+    fill=blue!10,
+    minimum width=3.8cm,
+    minimum height=1.0cm,
+    align=center,
+    font=\sffamily
+  },
+  arrow/.style={
+    ->,
+    thick,
+    >=Stealth
+  }
+}
+
+\begin{tikzpicture}[node distance=1.2cm and 2.2cm]
+  \node[block] (A) {Superpixels $\mu_j$ and $g_j$};
+
+  \node[block, below left=of A] (B) {Select Center-Window\\Superpixels};
+  \node[block, below=of B] (C) {Sort by Intensity\\Proxy $g_j$};
+  \node[block, below=of C] (D) {Select Top $n_{+}$\\as Positive Seeds};
+  \node[block, below=of D] (E) {Add Positive Prompts};
+
+  \node[block, below right=of A] (F) {Select Boundary\\Superpixels};
+  \node[block, below=of F] (G) {Sort by Intensity\\Proxy $g_j$};
+  \node[block, below=of G] (H) {Select Top $m_{-}$\\as Negative Seeds};
+  \node[block, below=of H] (I) {Add Negative Prompts};
+
+  \node[block, below=1.4cm of E] (J) {Initialize Prompt Set $P$};
+  \node[block, below left=of J] (K) {Initialize Mask\\Prompt Empty};
+  \node[block, below right=of J] (L) {Initialize Candidate\\Pool $Q$ Empty};
+
+  \draw[arrow] (A) -- (B);
+  \draw[arrow] (B) -- (C);
+  \draw[arrow] (C) -- (D);
+  \draw[arrow] (D) -- (E);
+
+  \draw[arrow] (A) -- (F);
+  \draw[arrow] (F) -- (G);
+  \draw[arrow] (G) -- (H);
+  \draw[arrow] (H) -- (I);
+
+  \draw[arrow] (E) -- (J);
+  \draw[arrow] (I) -- (J);
+  \draw[arrow] (J) -- (K);
+  \draw[arrow] (J) -- (L);
+\end{tikzpicture}
+\end{document}

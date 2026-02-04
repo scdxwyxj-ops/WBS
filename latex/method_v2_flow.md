@@ -8,16 +8,6 @@ fallback in `pics/` for easy viewing in any Markdown renderer.
 
 ## 0. Overview
 
-```mermaid
-flowchart TD
-  A[Input Image] --> B[Preprocess & Superpixels]
-  B --> C[Initialize Prompts]
-  C --> D[Iterative Prompting with SAM2]
-  D --> E[Candidate Mask Pool]
-  E --> F[Final Mask Selection]
-  F --> G[Output Mask]
-```
-
 ![Overview](pics/flow_overview.svg)
 
 # Method Specification (aligned with code)
@@ -96,14 +86,6 @@ This avoids any “centroid must lie inside” assumptions.
 
 ### Flowchart — Preprocess & Superpixel Construction
 
-```mermaid
-flowchart TD
-  A[Input Image] --> B[Resize Long Side]
-  B --> C[SLIC Superpixels]
-  C --> D[Compute Superpixel Sets Ω_j]
-  D --> E[Compute Centroids μ_j]
-  D --> F[Compute Intensity Proxy g_j]
-```
 
 ![Preprocess & Superpixels](pics/flow_preprocess.svg)
 
@@ -168,23 +150,6 @@ flowchart TD
 
 ### Flowchart — Iterative Prompting with Candidate Evaluation
 
-```mermaid
-flowchart TD
-  A[Current Prompts and Mask] --> B[SAM2 Inference]
-  B --> C[Compute Logits and Probabilities]
-  C --> D[Soft-vote on Superpixels]
-  D --> E[Select Top-q Candidates]
-  E --> F[Evaluate Candidates via SAM2]
-  F --> G[Choose Best Candidate]
-  G --> H[Add Positive Prompt]
-  H --> I[Optional Convex Hull Refinement]
-  I --> J[Optional Positive-Point Pruning]
-  J --> K[Update Mask Prompt]
-  K --> L[Append Mask and Score to Pool]
-  L --> M{More Valid Candidates?}
-  M -- Yes --> A
-  M -- No --> N[Exit Iteration]
-```
 
 ![Iterative Prompting](pics/flow_iterative_prompting.svg)
 
@@ -261,15 +226,6 @@ Let candidates be \(\{(M_i, s_i)\}_{i=1}^{N}\) from \(\mathcal{Q}\).
 
 ### Flowchart — Final Mask Selection
 
-```mermaid
-flowchart TD
-  A[Candidate Pool Q] --> B[IoU De-duplication]
-  B --> C{Remaining Masks >= 3?}
-  C -- No --> D[Select Max-Score Mask]
-  C -- Yes --> E[Cluster Masks by Area]
-  E --> F[Select Middle Cluster]
-  F --> G[Pick Max-Score Mask]
-```
 
 ![Final Selection](pics/flow_final_selection.svg)
 

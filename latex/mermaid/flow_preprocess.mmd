@@ -1,0 +1,11 @@
+%%{init:{
+ "theme":"default",
+ "flowchart":{"htmlLabels":false,"nodeSpacing":40,"rankSpacing":40},
+ "themeVariables":{"fontSize":"22px","primaryColor":"#ffffff","primaryBorderColor":"#000000","lineColor":"#000000","textColor":"#000000"}
+}}%%
+flowchart TD
+    A[Input Image] --> B[Resize Long Side]
+    B --> C[SLIC Superpixels]
+    C --> D[Compute Superpixel Sets Ω_j]
+    D --> E[Compute Centroids μ_j]
+    D --> F[Compute Intensity Proxy g_j]

@@ -1,0 +1,12 @@
+%%{init:{
+ "theme":"default",
+ "flowchart":{"htmlLabels":false,"nodeSpacing":40,"rankSpacing":40},
+ "themeVariables":{"fontSize":"22px","primaryColor":"#ffffff","primaryBorderColor":"#000000","lineColor":"#000000","textColor":"#000000"}
+}}%%
+flowchart TD
+    A["Valid candidate set U"] --> B["Compute v_j for each candidate"]
+    B --> C["Select Top-q candidates K"]
+    C --> D["For each j in K: add (mu_j, +1)"]
+    D --> E["Run SAM2 once and record score s^(j)"]
+    E --> F["Pick j* with highest s^(j)"]
+    F --> G["Keep M_t from best candidate"]

@@ -1,0 +1,20 @@
+%%{init:{
+ "theme":"default",
+ "flowchart":{"htmlLabels":false,"nodeSpacing":40,"rankSpacing":40},
+ "themeVariables":{"fontSize":"22px","primaryColor":"#ffffff","primaryBorderColor":"#000000","lineColor":"#000000","textColor":"#000000"}
+}}%%
+flowchart TD
+    A[Superpixels μ_j and g_j] --> B[Select Center-Window Superpixels]
+    B --> C[Sort by Intensity Proxy g_j]
+    C --> D[Select Top n_plus as Positive Seeds]
+    D --> E[Add Positive Prompts]
+
+    A --> F[Select Boundary Superpixels]
+    F --> G[Sort by Intensity Proxy g_j]
+    G --> H[Select Top m_minus as Negative Seeds]
+    H --> I[Add Negative Prompts]
+
+    E --> J[Initialize Prompt Set P]
+    I --> J
+    J --> K[Initialize Mask Prompt Empty]
+    J --> L[Initialize Candidate Pool Q Empty]

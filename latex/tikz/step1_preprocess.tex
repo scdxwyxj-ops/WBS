@@ -1,0 +1,39 @@
+\documentclass{standalone}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+
+\begin{document}
+\tikzset{
+  block/.style={
+    rectangle,
+    rounded corners,
+    draw=black,
+    thick,
+    fill=blue!10,
+    minimum width=3.8cm,
+    minimum height=1.0cm,
+    align=center,
+    font=\sffamily
+  },
+  arrow/.style={
+    ->,
+    thick,
+    >=Stealth
+  }
+}
+
+\begin{tikzpicture}[node distance=1.6cm and 2.4cm]
+  \node[block] (A) {Input Image};
+  \node[block, below=of A] (B) {Resize Long Side};
+  \node[block, below=of B] (C) {SLIC Superpixels};
+  \node[block, below=of C] (D) {Compute Superpixel Sets $\Omega_j$};
+  \node[block, below left=of D] (E) {Compute Centroids $\mu_j$};
+  \node[block, below right=of D] (F) {Compute Intensity Proxy $g_j$};
+
+  \draw[arrow] (A) -- (B);
+  \draw[arrow] (B) -- (C);
+  \draw[arrow] (C) -- (D);
+  \draw[arrow] (D) -- (E);
+  \draw[arrow] (D) -- (F);
+\end{tikzpicture}
+\end{document}

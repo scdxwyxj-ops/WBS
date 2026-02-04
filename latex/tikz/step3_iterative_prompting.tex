@@ -1,0 +1,66 @@
+\documentclass{standalone}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+
+\begin{document}
+\tikzset{
+  block/.style={
+    rectangle,
+    rounded corners,
+    draw=black,
+    thick,
+    fill=blue!10,
+    minimum width=4.2cm,
+    minimum height=1.0cm,
+    align=center,
+    font=\sffamily
+  },
+  decision/.style={
+    diamond,
+    draw=black,
+    thick,
+    fill=blue!10,
+    aspect=2,
+    align=center,
+    font=\sffamily
+  },
+  arrow/.style={
+    ->,
+    thick,
+    >=Stealth
+  }
+}
+
+\begin{tikzpicture}[node distance=1.1cm]
+  \node[block] (A) {Current Prompts and Mask};
+  \node[block, below=of A] (B) {SAM2 Inference};
+  \node[block, below=of B] (C) {Compute Logits and Probabilities};
+  \node[block, below=of C] (D) {Soft-vote on Superpixels};
+  \node[block, below=of D] (E) {Select Top-$q$ Candidates};
+  \node[block, below=of E] (F) {Evaluate Candidates via SAM2};
+  \node[block, below=of F] (G) {Choose Best Candidate};
+  \node[block, below=of G] (H) {Add Positive Prompt};
+  \node[block, below=of H] (I) {Optional Convex Hull Refinement};
+  \node[block, below=of I] (J) {Optional Positive-Point Pruning};
+  \node[block, below=of J] (K) {Update Mask Prompt};
+  \node[block, below=of K] (L) {Append Mask and Score to Pool};
+  \node[decision, below=1.2cm of L] (M) {More Valid\\Candidates?};
+  \node[block, right=2.8cm of M] (N) {Exit Iteration};
+
+  \draw[arrow] (A) -- (B);
+  \draw[arrow] (B) -- (C);
+  \draw[arrow] (C) -- (D);
+  \draw[arrow] (D) -- (E);
+  \draw[arrow] (E) -- (F);
+  \draw[arrow] (F) -- (G);
+  \draw[arrow] (G) -- (H);
+  \draw[arrow] (H) -- (I);
+  \draw[arrow] (I) -- (J);
+  \draw[arrow] (J) -- (K);
+  \draw[arrow] (K) -- (L);
+  \draw[arrow] (L) -- (M);
+
+  \draw[arrow] (M) -- node[above]{No} (N);
+  \draw[arrow] (M.west) -- ++(-2.4cm,0) |- node[left]{Yes} (A.west);
+\end{tikzpicture}
+\end{document}

@@ -1,0 +1,12 @@
+%%{init:{
+ "theme":"default",
+ "flowchart":{"htmlLabels":false,"nodeSpacing":40,"rankSpacing":40},
+ "themeVariables":{"fontSize":"22px","primaryColor":"#ffffff","primaryBorderColor":"#000000","lineColor":"#000000","textColor":"#000000"}
+}}%%
+flowchart TD
+    A[Candidate Pool Q] --> B[IoU De-duplication]
+    B --> C{Remaining Masks >= 3?}
+    C -- No --> D[Select Max-Score Mask]
+    C -- Yes --> E[Cluster Masks by Area]
+    E --> F[Select Middle Cluster]
+    F --> G[Pick Max-Score Mask]

@@ -1,0 +1,11 @@
+%%{init:{
+ "theme":"default",
+ "flowchart":{"htmlLabels":false,"nodeSpacing":40,"rankSpacing":40},
+ "themeVariables":{"fontSize":"22px","primaryColor":"#ffffff","primaryBorderColor":"#000000","lineColor":"#000000","textColor":"#000000"}
+}}%%
+flowchart TD
+  A[Input Image] --> B[Preprocess and Superpixels]
+  B --> C[Initialize Prompts]
+  C --> D[Iterative Prompting with SAM2]
+  D --> E[Final Mask Selection]
+  E --> F[Output Mask]

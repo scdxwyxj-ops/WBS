@@ -1,0 +1,18 @@
+%%{init:{
+ "theme":"default",
+ "flowchart":{"htmlLabels":false,"nodeSpacing":40,"rankSpacing":40},
+ "themeVariables":{"fontSize":"22px","primaryColor":"#ffffff","primaryBorderColor":"#000000","lineColor":"#000000","textColor":"#000000"}
+}}%%
+%%{init:{
+ "theme":"default",
+ "flowchart":{"htmlLabels":false,"nodeSpacing":20,"rankSpacing":20},
+ "themeVariables":{"fontSize":"16px","primaryColor":"#ffffff","primaryBorderColor":"#000000","lineColor":"#000000","textColor":"#000000"}
+}}%%
+flowchart TD
+    A[Current Prompts and Mask] --> B[Generate Superpixel Scores]
+    B --> C[Select and Add Best Candidate]
+    C --> D[Optional Convex Hull / Pruning]
+    D --> E[Update Mask Prompt + Append to Pool]
+    E --> F{More Valid Candidates?}
+    F -- Yes --> A
+    F -- No --> G[Exit Iteration]
