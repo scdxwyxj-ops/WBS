@@ -150,6 +150,19 @@ def _save(fig: plt.Figure, path: Path) -> None:
     plt.close(fig)
 
 
+def _logits_to_rgb(logits: np.ndarray, cmap: str = "magma") -> np.ndarray:
+    arr = np.asarray(logits, dtype=np.float32)
+    lo = float(np.min(arr))
+    hi = float(np.max(arr))
+    if hi <= lo:
+        norm = np.zeros_like(arr, dtype=np.float32)
+    else:
+        norm = (arr - lo) / (hi - lo)
+    cm = plt.get_cmap(cmap)
+    rgb = cm(norm)[..., :3]
+    return (rgb * 255).astype(np.uint8)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate candidate-process figures for one image.")
     parser.add_argument("--pipeline-cfg", type=Path, default=Path("configs/pipeline.json"))
@@ -231,6 +244,15 @@ def main() -> None:
     ax.set_title(f"SLIC Segmentation (sample={sample_index})")
     ax.axis("off")
     _save(fig, out_dir / "01_slic_segmentation.png")
+
+    # 1b) Keep segment boundaries, but use current-step logits heatmap as background.
+    logits_bg = _logits_to_rgb(logits, cmap="magma")
+    seg_logits_vis = mark_boundaries(logits_bg, segment, color=(1, 1, 0), mode="thick")
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(seg_logits_vis)
+    ax.set_title("SLIC Boundaries on Current-Step Logits")
+    ax.axis("off")
+    _save(fig, out_dir / "01b_slic_boundaries_on_logits.png")
 
     # 2) Top-5 candidate superpixel-only visualizations.
     for rank, cand in enumerate(candidates[: args.top_candidates], start=1):
