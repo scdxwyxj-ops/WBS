@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 
 from configs.pipeline_config import load_pipeline_config
 from datasets.dataset import load_dataset
+from debug_tests.run_tta import run_segmentation_with_info
 from image_processings.image_pre_seg import change_image_type, image_i_segment
 from image_processings.info import Candidate, Info, PromptBundle
 from sam2.build_sam import build_sam2
@@ -326,11 +327,30 @@ def main() -> None:
         ax.axis("off")
         _save(fig, out_dir / f"06_top{rank}_sam2_mask.png")
 
+    # 7) True mask-pool from full iterative pipeline; one image per pool entry.
+    _final_mask, _history, vis_full, _seg_full, info_full = run_segmentation_with_info(
+        image=image,
+        config=pipeline_cfg,
+        predictor=predictor,
+    )
+    pool_entries = info_full.get_mask_pool()
+    for idx, entry in enumerate(pool_entries, start=1):
+        pool_mask = np.asarray(entry.get("mask"), dtype=bool)
+        pool_score = float(entry.get("score", 0.0))
+        pool_iter = int(entry.get("iteration", -1))
+        overlay = _overlay_mask(vis_full, pool_mask, color=(0, 255, 255), alpha=0.42)
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.imshow(overlay)
+        ax.set_title(f"Mask Pool #{idx} | iter={pool_iter} | score={pool_score:.4f}")
+        ax.axis("off")
+        _save(fig, out_dir / f"07_mask_pool_{idx:02d}.png")
+
     # Optional compact summary text.
     summary = {
         "sample_index": sample_index,
         "dataset": pipeline_cfg.dataset.name,
         "candidate_top_n": top_n,
+        "mask_pool_size_after_iteration": len(pool_entries),
         "selected_top3_by_sam2_score": [
             {
                 "rank": i + 1,
