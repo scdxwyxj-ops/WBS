@@ -211,6 +211,8 @@ def main() -> None:
     )
     _ = mask, score
     info.record_low_res_mask(low_res_mask)
+    # Snapshot strict previous-step positives before current-step foreground update.
+    prev_pos = list(info.positive_point_coords)
     info.update_from_logits(logits)
 
     # Candidates at current timestep.
@@ -258,7 +260,6 @@ def main() -> None:
     top3 = evals[: args.top3]
 
     # 3) Previous-step positive prompts over cell image (for top-3 candidate contexts).
-    prev_pos = list(info.positive_point_coords)
     for rank, ev in enumerate(top3, start=1):
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(img_resized)
