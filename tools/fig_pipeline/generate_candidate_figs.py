@@ -235,8 +235,7 @@ def main() -> None:
     # 2) Top-5 candidate superpixel-only visualizations.
     for rank, cand in enumerate(candidates[: args.top_candidates], start=1):
         cand_mask = info.node_list[cand.node_id].mask
-        vis = np.zeros_like(img_resized)
-        vis[cand_mask] = np.array([255, 255, 255], dtype=np.uint8)
+        vis = _overlay_mask(img_resized, cand_mask, color=(0, 255, 255), alpha=0.45)
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(vis)
         ax.set_title(f"Candidate #{rank} (node={cand.node_id}, logit-score={cand.score:.4f})")
