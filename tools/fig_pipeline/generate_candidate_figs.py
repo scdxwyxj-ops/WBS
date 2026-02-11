@@ -345,12 +345,29 @@ def main() -> None:
         ax.axis("off")
         _save(fig, out_dir / f"07_mask_pool_{idx:02d}.png")
 
+    # 8) Final selected mask result.
+    final_overlay = _overlay_mask(vis_full, np.asarray(_final_mask, dtype=bool), color=(255, 0, 0), alpha=0.42)
+    final_score = None
+    if info_full.selected_entry is not None:
+        final_score = float(info_full.selected_entry.get("score", 0.0))
+    final_method = str(info_full.selection_metadata.get("method", "unknown"))
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(final_overlay)
+    if final_score is None:
+        ax.set_title(f"Final Mask Selection | method={final_method}")
+    else:
+        ax.set_title(f"Final Mask Selection | method={final_method} | score={final_score:.4f}")
+    ax.axis("off")
+    _save(fig, out_dir / "08_final_selected_mask.png")
+
     # Optional compact summary text.
     summary = {
         "sample_index": sample_index,
         "dataset": pipeline_cfg.dataset.name,
         "candidate_top_n": top_n,
         "mask_pool_size_after_iteration": len(pool_entries),
+        "final_selection_method": final_method,
+        "final_selection_score": final_score,
         "selected_top3_by_sam2_score": [
             {
                 "rank": i + 1,
