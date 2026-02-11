@@ -259,10 +259,13 @@ def main() -> None:
     top3 = evals[: args.top3]
 
     # 3) Previous-step positive prompts over cell image (for top-3 candidate contexts).
+    prev_neg = list(info.negative_point_coords)
     for rank, ev in enumerate(top3, start=1):
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(img_resized)
         _draw_points(ax, prev_pos, color="#1f77b4", label="previous positive", marker="o", size=44)
+        _draw_points(ax, prev_neg, color="#ff7f0e", label="negative", marker="^", size=42)
+        ax.legend(loc="upper right", fontsize=8)
         ax.set_title(f"Top-{rank} Candidate Context (SAM2 score={ev.score:.4f})")
         ax.axis("off")
         _save(fig, out_dir / f"03_top{rank}_previous_positive_prompts.png")
@@ -285,6 +288,7 @@ def main() -> None:
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(img_resized)
         _draw_points(ax, prev_pos, color="#1f77b4", label="previous positive", marker="o", size=40)
+        _draw_points(ax, prev_neg, color="#ff7f0e", label="negative", marker="^", size=38)
         ax.scatter([cx], [cy], c="red", s=70, marker="x", linewidths=2.0, label="new centroid")
         ax.legend(loc="upper right", fontsize=8)
         ax.set_title(f"Top-{rank} Candidate Prompt (add centroid)")
