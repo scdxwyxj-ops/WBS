@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
@@ -15,6 +16,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from skimage.segmentation import mark_boundaries
+
+# Make `python tools/...` work from repo root on server.
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from configs.pipeline_config import load_pipeline_config
 from datasets.dataset import load_dataset
@@ -154,7 +160,7 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, default=Path("assets/figs"))
     args = parser.parse_args()
 
-    root = Path(__file__).resolve().parents[2]
+    root = ROOT
     pipeline_cfg = load_pipeline_config(root / args.pipeline_cfg)
     constants = json.loads((root / args.constants).read_text(encoding="utf-8"))
 
