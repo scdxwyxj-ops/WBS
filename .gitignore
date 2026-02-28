@@ -12,6 +12,8 @@ codex.md
 CONSTANT.json
 configs/pipeline.json
 configs/tta_config.json
+configs/cv_run.json
+configs/cv_search.json
 
 SAM-TTA/
 
