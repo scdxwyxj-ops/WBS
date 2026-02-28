@@ -1,5 +1,30 @@
 # Notes for WBS
 
+## 项目核心（中文速览）
+- 这是一个**无监督白细胞分割**项目：用 SLIC 超像素先把图像离散化，再通过图结构迭代选择提示点（prompts），驱动 SAM2 逐步细化掩码。
+- 流程核心不是端到端训练，而是：**预分割 + 提示点状态机 + 候选掩码池评分/去重/聚类 +（可选）TTA LoRA 适配**。
+- 因此该仓库的“算法主线”是 `debug_tests/debug_test.py` 的 `run_unsupervised_segmentation`，围绕 `image_processings/info.py` 的节点标注与候选扩展策略展开。
+
+## 外置记忆（已更新）
+> 以下内容可作为你后续和 Agent 对话时的“稳定上下文”。
+
+### 1) 当前有效入口（优先记忆）
+- 基础流水线：`debug_tests/debug_test.py`
+- 批量实验：`debug_tests/run_full_experiment.py`
+- TTA 流水线：`debug_tests/run_tta.py`、`experiments/run_pipeline_tta.py`
+
+### 2) 当前有效配置（优先记忆）
+- 运行时以 `CONSTANT.json` 为总入口（本地文件，git ignore）。
+- 其中 `pipeline_cfg` 指向实际使用的 `configs/pipeline.json`。
+- TTA 使用 `configs/tta_config.json`。
+
+### 3) 已过期/低优先级信息（避免误用）
+- `image_processings/config.py` 是历史遗留硬编码配置，**不是当前主流程的配置来源**。
+- `debug_tests/debug_test_refactored.py` 更像旧版调试脚本参考，默认不作为主入口。
+
+### 4) 一句话记忆模板
+- “WBS = SLIC 超像素图 + 迭代 prompt 的 SAM2 无监督分割；最后在 mask pool 上做打分/聚类选最终结果；可选 TTA+LoRA 进一步提升。”
+
 ## Overview
 - Unsupervised white blood cell segmentation around SAM2 prompt refinement with a scored mask pool and optional clustering for final selection, plus test-time adaptation (TTA) with LoRA.
 - Main entrypoints: pipeline (`debug_tests/debug_test.py`, `debug_tests/run_full_experiment.py`) and pipeline+TTA (`debug_tests/run_tta.py`, `experiments/run_pipeline_tta.py`).
