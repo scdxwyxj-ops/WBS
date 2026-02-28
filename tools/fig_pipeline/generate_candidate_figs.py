@@ -15,6 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Rectangle
 from skimage.segmentation import mark_boundaries
 
 # Make `python tools/...` work from repo root on server.
@@ -164,6 +165,25 @@ def _logits_to_rgb(logits: np.ndarray, cmap: str = "magma") -> np.ndarray:
     return (rgb * 255).astype(np.uint8)
 
 
+def _bbox_from_mask(mask: np.ndarray, image_shape: Tuple[int, int], pad_ratio: float = 0.15, min_pad: int = 12) -> Tuple[int, int, int, int]:
+    m = np.asarray(mask, dtype=bool)
+    ys, xs = np.where(m)
+    h, w = image_shape
+    if ys.size == 0:
+        return 0, h - 1, 0, w - 1
+    y0, y1 = int(ys.min()), int(ys.max())
+    x0, x1 = int(xs.min()), int(xs.max())
+    box_h = max(1, y1 - y0 + 1)
+    box_w = max(1, x1 - x0 + 1)
+    py = max(min_pad, int(round(box_h * pad_ratio)))
+    px = max(min_pad, int(round(box_w * pad_ratio)))
+    y0 = max(0, y0 - py)
+    y1 = min(h - 1, y1 + py)
+    x0 = max(0, x0 - px)
+    x1 = min(w - 1, x1 + px)
+    return y0, y1, x0, x1
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate candidate-process figures for one image.")
     parser.add_argument("--pipeline-cfg", type=Path, default=Path("configs/pipeline.json"))
@@ -255,15 +275,62 @@ def main() -> None:
     ax.axis("off")
     _save(fig, out_dir / "01b_slic_boundaries_on_logits.png")
 
-    # 2) Top-5 candidate superpixel-only visualizations.
-    for rank, cand in enumerate(candidates[: args.top_candidates], start=1):
-        cand_mask = info.node_list[cand.node_id].mask
-        vis = _overlay_mask(img_resized, cand_mask, color=(0, 255, 255), alpha=0.45)
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(vis)
-        ax.set_title(f"Candidate #{rank} (node={cand.node_id}, logit-score={cand.score:.4f})")
-        ax.axis("off")
-        _save(fig, out_dir / f"02_candidate_{rank}_superpixel.png")
+    # 2) Top-k candidates in ONE figure + one zoomed-in candidate.
+    top_candidates = candidates[: args.top_candidates]
+    cand_colors = np.array(
+        [
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 180, 255],
+            [255, 180, 0],
+            [255, 0, 255],
+        ],
+        dtype=np.float32,
+    )
+    combined = img_resized.astype(np.float32).copy()
+    alpha = 0.40
+    label_lines: List[str] = []
+    for rank, cand in enumerate(top_candidates, start=1):
+        mask_i = np.asarray(info.node_list[cand.node_id].mask, dtype=bool)
+        color = cand_colors[(rank - 1) % len(cand_colors)]
+        combined[mask_i] = combined[mask_i] * (1.0 - alpha) + color * alpha
+        label_lines.append(f"#{rank}: node={cand.node_id}, logit={cand.score:.4f}")
+
+    # Use the top-1 candidate for the zoom box.
+    zoom_rank = 1
+    zoom_candidate = top_candidates[zoom_rank - 1]
+    zoom_mask = np.asarray(info.node_list[zoom_candidate.node_id].mask, dtype=bool)
+    y0, y1, x0, x1 = _bbox_from_mask(zoom_mask, img_resized.shape[:2], pad_ratio=0.22, min_pad=14)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.imshow(np.clip(combined, 0, 255).astype(np.uint8))
+    rect = Rectangle((x0, y0), x1 - x0 + 1, y1 - y0 + 1, fill=False, edgecolor="white", linewidth=2.0, linestyle="--")
+    ax.add_patch(rect)
+    ax.set_title("Top-5 Candidate Superpixels (Overlay)")
+    ax.axis("off")
+    ax.text(
+        0.01,
+        0.01,
+        "\\n".join(label_lines),
+        transform=ax.transAxes,
+        fontsize=8,
+        color="white",
+        va="bottom",
+        ha="left",
+        bbox=dict(facecolor="black", alpha=0.45, pad=4),
+    )
+    _save(fig, out_dir / "02_candidates_overlay.png")
+
+    zoom_img = img_resized[y0 : y1 + 1, x0 : x1 + 1]
+    zoom_mask_crop = zoom_mask[y0 : y1 + 1, x0 : x1 + 1]
+    zoom_vis = _overlay_mask(zoom_img, zoom_mask_crop, color=(255, 0, 0), alpha=0.45)
+    fig, ax = plt.subplots(figsize=(5.5, 5.5))
+    ax.imshow(zoom_vis)
+    ax.set_title(
+        f"Candidate #{zoom_rank} Zoom-in (node={zoom_candidate.node_id}, logit={zoom_candidate.score:.4f})"
+    )
+    ax.axis("off")
+    _save(fig, out_dir / "02b_candidate_zoom.png")
 
     # Evaluate candidates with SAM2 and rank by SAM2 score.
     evals: List[CandidateEval] = []
