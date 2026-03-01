@@ -178,6 +178,12 @@
 - Unified launcher with nohup + output dir: `./run.sh tta --pipeline-cfg configs/pipeline.json --tta-cfg configs/tta_config.json`.
 - Inspect foreground ratios: `python debug_tests/calculate_foreground_ratio.py --datasets cropped dataset_v0 original`.
 
+## Task Summary & Drawing Tool Command
+- Current main task: run the unsupervised WBC segmentation pipeline (SLIC superpixels + iterative prompts + SAM2 mask refinement), and optionally run TTA/LoRA for improved results.
+- Main runnable entries: `python debug_tests/debug_test.py` (single pipeline pass), `python debug_tests/run_full_experiment.py` (batch evaluation), `python debug_tests/run_tta.py` (pipeline + TTA).
+- Drawing/figure tool command (candidate process illustration):
+  - `python tools/fig_pipeline/generate_candidate_figs.py --pipeline-cfg configs/pipeline.json --constants CONSTANT.json --sample-index 0 --top-candidates 5 --top3 3 --out-dir assets/figs`
+
 ## Mask Prompt Modes (single switch)
 - Set `sam.mask_prompt_source` in `configs/pipeline.json`:
   - `slic`: use the foreground mask built from promoted SLIC segments (convex hull optional) as `mask_input`.

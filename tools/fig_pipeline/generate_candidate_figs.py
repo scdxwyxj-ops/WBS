@@ -15,7 +15,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
 from skimage.segmentation import mark_boundaries
 
 # Make `python tools/...` work from repo root on server.
@@ -96,31 +95,13 @@ def _predict_once(
 
 
 def _collect_candidates(info: Info, top_n: int) -> List[Candidate]:
-    # Same logic as Info.get_candidates, but without candidate_top_k truncation.
-    foreground_ids = np.flatnonzero(info.labels == 1)
-    if foreground_ids.size == 0:
-        return []
-
-    candidate_ids = set()
-    for idx in foreground_ids:
-        for neighbor in info._get_neighbors(int(idx)):
-            if neighbor >= info.num_segments:
-                continue
-            if info.labels[neighbor] != -1:
-                continue
-            if info.node_list[neighbor].is_edge:
-                continue
-            candidate_ids.add(int(neighbor))
-
-    scored: List[Candidate] = []
-    for node_id in candidate_ids:
-        score = info._node_score(node_id)
-        if score < info.score_lower_bound:
-            continue
-        scored.append(Candidate(node_id=node_id, score=float(score), center=info.node_list[node_id].center))
-
-    scored.sort(key=lambda c: c.score, reverse=True)
-    return scored[:top_n]
+    """Collect candidates using the exact pipeline API (Info.get_candidates)."""
+    original_top_k = int(info.settings.candidate_top_k)
+    try:
+        info.settings.candidate_top_k = int(max(1, top_n))
+        return info.get_candidates()
+    finally:
+        info.settings.candidate_top_k = original_top_k
 
 
 def _draw_points(
@@ -249,14 +230,14 @@ def main() -> None:
     prev_pos = list(info.positive_point_coords)
     info.update_from_logits(logits)
 
-    # Candidates at current timestep.
-    top_n = max(args.top_candidates, args.top3)
-    candidates = _collect_candidates(info, top_n=top_n)
-    if len(candidates) < args.top3:
-        raise RuntimeError(f"Only {len(candidates)} candidates found; need at least {args.top3}.")
-
     out_dir = root / args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 0) Pure original image for presentation (no overlays/annotations).
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(img_resized)
+    ax.axis("off")
+    _save(fig, out_dir / "00_original_image.png")
 
     # 1) SLIC segmentation visualization.
     seg_vis = mark_boundaries(img_resized, segment, color=(1, 1, 0), mode="thick")
@@ -275,124 +256,118 @@ def main() -> None:
     ax.axis("off")
     _save(fig, out_dir / "01b_slic_boundaries_on_logits.png")
 
-    # 2) Top-k candidates in ONE figure + one zoomed-in candidate.
-    top_candidates = candidates[: args.top_candidates]
-    cand_colors = np.array(
-        [
-            [255, 0, 0],
-            [0, 255, 0],
-            [0, 180, 255],
-            [255, 180, 0],
-            [255, 0, 255],
-        ],
-        dtype=np.float32,
-    )
-    combined = img_resized.astype(np.float32).copy()
-    alpha = 0.40
-    label_lines: List[str] = []
-    for rank, cand in enumerate(top_candidates, start=1):
-        mask_i = np.asarray(info.node_list[cand.node_id].mask, dtype=bool)
-        color = cand_colors[(rank - 1) % len(cand_colors)]
-        combined[mask_i] = combined[mask_i] * (1.0 - alpha) + color * alpha
-        label_lines.append(f"#{rank}: node={cand.node_id}, logit={cand.score:.4f}")
-
-    # Use the top-1 candidate for the zoom box.
-    zoom_rank = 1
-    zoom_candidate = top_candidates[zoom_rank - 1]
-    zoom_mask = np.asarray(info.node_list[zoom_candidate.node_id].mask, dtype=bool)
-    y0, y1, x0, x1 = _bbox_from_mask(zoom_mask, img_resized.shape[:2], pad_ratio=0.22, min_pad=14)
-
-    fig, ax = plt.subplots(figsize=(7, 7))
-    ax.imshow(np.clip(combined, 0, 255).astype(np.uint8))
-    rect = Rectangle((x0, y0), x1 - x0 + 1, y1 - y0 + 1, fill=False, edgecolor="white", linewidth=2.0, linestyle="--")
-    ax.add_patch(rect)
-    ax.set_title("Top-5 Candidate Superpixels (Overlay)")
-    ax.axis("off")
-    ax.text(
-        0.01,
-        0.01,
-        "\\n".join(label_lines),
-        transform=ax.transAxes,
-        fontsize=8,
-        color="white",
-        va="bottom",
-        ha="left",
-        bbox=dict(facecolor="black", alpha=0.45, pad=4),
-    )
-    _save(fig, out_dir / "02_candidates_overlay.png")
-
-    zoom_img = img_resized[y0 : y1 + 1, x0 : x1 + 1]
-    zoom_mask_crop = zoom_mask[y0 : y1 + 1, x0 : x1 + 1]
-    zoom_vis = _overlay_mask(zoom_img, zoom_mask_crop, color=(255, 0, 0), alpha=0.45)
-    fig, ax = plt.subplots(figsize=(5.5, 5.5))
-    ax.imshow(zoom_vis)
-    ax.set_title(
-        f"Candidate #{zoom_rank} Zoom-in (node={zoom_candidate.node_id}, logit={zoom_candidate.score:.4f})"
-    )
-    ax.axis("off")
-    _save(fig, out_dir / "02b_candidate_zoom.png")
-
-    # Evaluate candidates with SAM2 and rank by SAM2 score.
+    # Candidates at current timestep.
+    top_n = max(args.top_candidates, args.top3)
+    candidates = _collect_candidates(info, top_n=top_n)
     evals: List[CandidateEval] = []
-    for cand in candidates:
-        bundle = info.build_prompts(candidate_id=cand.node_id)
-        c_logits, c_mask, c_score, _low_res = _predict_once(
-            predictor,
-            info,
-            bundle,
-            multimask_output=pipeline_cfg.sam.multimask_output,
-            mask_prompt_source=pipeline_cfg.sam.mask_prompt_source,
-        )
-        evals.append(CandidateEval(candidate=cand, bundle=bundle, logits=c_logits, mask=c_mask, score=c_score))
-
-    evals.sort(key=lambda x: x.score, reverse=True)
-    top3 = evals[: args.top3]
-
-    # 3) Previous-step positive prompts over cell image (for top-3 candidate contexts).
+    top3: List[CandidateEval] = []
     prev_neg = list(info.negative_point_coords)
-    for rank, ev in enumerate(top3, start=1):
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(img_resized)
-        _draw_points(ax, prev_pos, color="#1f77b4", label="previous positive", marker="o", size=44)
-        _draw_points(ax, prev_neg, color="#ff7f0e", label="negative", marker="^", size=42)
-        ax.legend(loc="upper right", fontsize=8)
-        ax.set_title(f"Top-{rank} Candidate Context (SAM2 score={ev.score:.4f})")
-        ax.axis("off")
-        _save(fig, out_dir / f"03_top{rank}_previous_positive_prompts.png")
+    candidate_error: Optional[str] = None
 
-    # 4) Candidate superpixel + centroid (3 images).
-    for rank, ev in enumerate(top3, start=1):
-        cand_mask = info.node_list[ev.candidate.node_id].mask
-        cx, cy = info.node_list[ev.candidate.node_id].center
-        vis = _overlay_mask(img_resized, cand_mask, color=(255, 255, 0), alpha=0.45)
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(vis)
-        ax.scatter([cx], [cy], c="red", s=70, marker="x", linewidths=2.0)
-        ax.set_title(f"Top-{rank} Candidate Superpixel + Centroid")
-        ax.axis("off")
-        _save(fig, out_dir / f"04_top{rank}_candidate_centroid.png")
+    if candidates:
+        # 2) Top-k candidates in ONE figure + one zoomed-in candidate.
+        top_candidates = candidates[: args.top_candidates]
+        cand_colors = np.array(
+            [
+                [255, 0, 0],
+                [0, 255, 0],
+                [0, 180, 255],
+                [255, 180, 0],
+                [255, 0, 255],
+            ],
+            dtype=np.float32,
+        )
+        combined = img_resized.astype(np.float32).copy()
+        alpha = 0.40
+        for rank, cand in enumerate(top_candidates, start=1):
+            mask_i = np.asarray(info.node_list[cand.node_id].mask, dtype=bool)
+            color = cand_colors[(rank - 1) % len(cand_colors)]
+            combined[mask_i] = combined[mask_i] * (1.0 - alpha) + color * alpha
 
-    # 5) Candidate prompt set (previous positives + new centroid) (3 images).
-    for rank, ev in enumerate(top3, start=1):
-        cx, cy = info.node_list[ev.candidate.node_id].center
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(img_resized)
-        _draw_points(ax, prev_pos, color="#1f77b4", label="previous positive", marker="o", size=40)
-        _draw_points(ax, prev_neg, color="#ff7f0e", label="negative", marker="^", size=38)
-        ax.scatter([cx], [cy], c="red", s=70, marker="x", linewidths=2.0, label="new centroid")
-        ax.legend(loc="upper right", fontsize=8)
-        ax.set_title(f"Top-{rank} Candidate Prompt (add centroid)")
+        fig, ax = plt.subplots(figsize=(7, 7))
+        ax.imshow(np.clip(combined, 0, 255).astype(np.uint8))
         ax.axis("off")
-        _save(fig, out_dir / f"05_top{rank}_candidate_prompt.png")
+        _save(fig, out_dir / "02_candidates_overlay.png")
 
-    # 6) SAM2 masks for top-3 candidate prompts.
-    for rank, ev in enumerate(top3, start=1):
-        over = _overlay_mask(img_resized, ev.mask, color=(255, 0, 0), alpha=0.4)
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(over)
-        ax.set_title(f"Top-{rank} SAM2 Mask (score={ev.score:.4f})")
+        # Use the top-1 candidate for zoom-only view.
+        zoom_rank = 1
+        zoom_candidate = top_candidates[zoom_rank - 1]
+        zoom_mask = np.asarray(info.node_list[zoom_candidate.node_id].mask, dtype=bool)
+        y0, y1, x0, x1 = _bbox_from_mask(zoom_mask, img_resized.shape[:2], pad_ratio=0.22, min_pad=14)
+        zoom_img = img_resized[y0 : y1 + 1, x0 : x1 + 1]
+        zoom_mask_crop = zoom_mask[y0 : y1 + 1, x0 : x1 + 1]
+        zoom_vis = _overlay_mask(zoom_img, zoom_mask_crop, color=(255, 0, 0), alpha=0.45)
+        fig, ax = plt.subplots(figsize=(5.5, 5.5))
+        ax.imshow(zoom_vis)
+        ax.set_title(
+            f"Candidate #{zoom_rank} Zoom-in (node={zoom_candidate.node_id}, logit={zoom_candidate.score:.4f})"
+        )
         ax.axis("off")
-        _save(fig, out_dir / f"06_top{rank}_sam2_mask.png")
+        _save(fig, out_dir / "02b_candidate_zoom.png")
+
+        # Evaluate candidates with SAM2 and rank by SAM2 score.
+        for cand in candidates:
+            bundle = info.build_prompts(candidate_id=cand.node_id)
+            c_logits, c_mask, c_score, _low_res = _predict_once(
+                predictor,
+                info,
+                bundle,
+                multimask_output=pipeline_cfg.sam.multimask_output,
+                mask_prompt_source=pipeline_cfg.sam.mask_prompt_source,
+            )
+            evals.append(CandidateEval(candidate=cand, bundle=bundle, logits=c_logits, mask=c_mask, score=c_score))
+
+        evals.sort(key=lambda x: x.score, reverse=True)
+        top3 = evals[: min(args.top3, len(evals))]
+
+        # 3) Previous-step positive prompts over cell image.
+        for rank, ev in enumerate(top3, start=1):
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.imshow(img_resized)
+            _draw_points(ax, prev_pos, color="blue", label="previous positive", marker="o", size=44)
+            _draw_points(ax, prev_neg, color="red", label="negative", marker="^", size=42)
+            ax.set_title(f"Top-{rank} Candidate Context (SAM2 score={ev.score:.4f})")
+            ax.axis("off")
+            _save(fig, out_dir / f"03_top{rank}_previous_positive_prompts.png")
+
+        # 4) Candidate superpixel + centroid.
+        for rank, ev in enumerate(top3, start=1):
+            cand_mask = info.node_list[ev.candidate.node_id].mask
+            cx, cy = info.node_list[ev.candidate.node_id].center
+            vis = _overlay_mask(img_resized, cand_mask, color=(255, 255, 0), alpha=0.45)
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.imshow(vis)
+            ax.scatter([cx], [cy], c="green", s=70, marker="x", linewidths=2.0)
+            ax.set_title(f"Top-{rank} Candidate Superpixel + Centroid")
+            ax.axis("off")
+            _save(fig, out_dir / f"04_top{rank}_candidate_centroid.png")
+
+        # 5) Candidate prompt set (previous positives + new centroid).
+        for rank, ev in enumerate(top3, start=1):
+            cx, cy = info.node_list[ev.candidate.node_id].center
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.imshow(img_resized)
+            _draw_points(ax, prev_pos, color="blue", label="previous positive", marker="o", size=40)
+            _draw_points(ax, prev_neg, color="red", label="negative", marker="^", size=38)
+            ax.scatter([cx], [cy], c="green", s=70, marker="x", linewidths=2.0, label="new centroid")
+            ax.set_title(f"Top-{rank} Candidate Prompt (add centroid)")
+            ax.axis("off")
+            _save(fig, out_dir / f"05_top{rank}_candidate_prompt.png")
+
+        # 6) SAM2 masks for selected candidate prompts.
+        for rank, ev in enumerate(top3, start=1):
+            over = _overlay_mask(img_resized, ev.mask, color=(255, 0, 0), alpha=0.4)
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.imshow(over)
+            ax.set_title(f"Top-{rank} SAM2 Mask (score={ev.score:.4f})")
+            ax.axis("off")
+            _save(fig, out_dir / f"06_top{rank}_sam2_mask.png")
+    else:
+        candidate_error = (
+            "No candidates at current timestep after initial update. "
+            "Saved non-candidate figures and full-pipeline outputs only."
+        )
+        print(f"[WARN] {candidate_error}")
 
     # 7) True mask-pool from full iterative pipeline; one image per pool entry.
     _final_mask, _history, vis_full, _seg_full, info_full = run_segmentation_with_info(
@@ -446,6 +421,9 @@ def main() -> None:
         "sample_index": sample_index,
         "dataset": pipeline_cfg.dataset.name,
         "candidate_top_n": top_n,
+        "num_candidates_found": len(candidates),
+        "requested_top3": int(args.top3),
+        "candidate_warning": candidate_error,
         "mask_pool_size_full": len(pool_entries_full),
         "mask_pool_size_filtered": len(pool_entries_filtered),
         "final_selection_method": final_method,
