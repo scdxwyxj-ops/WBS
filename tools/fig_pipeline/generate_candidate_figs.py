@@ -96,12 +96,7 @@ def _predict_once(
 
 def _collect_candidates(info: Info, top_n: int) -> List[Candidate]:
     """Collect candidates using the exact pipeline API (Info.get_candidates)."""
-    original_top_k = int(info.settings.candidate_top_k)
-    try:
-        info.settings.candidate_top_k = int(max(1, top_n))
-        return info.get_candidates()
-    finally:
-        info.settings.candidate_top_k = original_top_k
+    return info.get_candidates(top_k=top_n)
 
 
 def _draw_points(

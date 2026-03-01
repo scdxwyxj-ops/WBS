@@ -249,7 +249,7 @@ class Info:
         self.threshold = self._compute_threshold()
         self._update_foreground_labels()
 
-    def get_candidates(self) -> List[Candidate]:
+    def get_candidates(self, top_k: Optional[int] = None) -> List[Candidate]:
         foreground_ids = np.flatnonzero(self.labels == 1)
         if foreground_ids.size == 0:
             return []
@@ -273,7 +273,8 @@ class Info:
             scored.append(Candidate(node_id=node_id, score=score, center=self._round_point(self.node_list[node_id].center)))
 
         scored.sort(key=lambda c: c.score, reverse=True)
-        return scored[: self.settings.candidate_top_k]
+        limit = self.settings.candidate_top_k if top_k is None else max(1, int(top_k))
+        return scored[:limit]
 
     def commit_candidate(self, node_id: int) -> None:
         if self.labels[node_id] == 0:
