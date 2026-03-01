@@ -15,7 +15,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
 from skimage.segmentation import mark_boundaries
 
 # Make `python tools/...` work from repo root on server.
@@ -296,7 +295,7 @@ def main() -> None:
         combined[mask_i] = combined[mask_i] * (1.0 - alpha) + color * alpha
         label_lines.append(f"#{rank}: node={cand.node_id}, logit={cand.score:.4f}")
 
-    # Use the top-1 candidate for the zoom box.
+    # Use the top-1 candidate for zoom-only view.
     zoom_rank = 1
     zoom_candidate = top_candidates[zoom_rank - 1]
     zoom_mask = np.asarray(info.node_list[zoom_candidate.node_id].mask, dtype=bool)
@@ -304,8 +303,6 @@ def main() -> None:
 
     fig, ax = plt.subplots(figsize=(7, 7))
     ax.imshow(np.clip(combined, 0, 255).astype(np.uint8))
-    rect = Rectangle((x0, y0), x1 - x0 + 1, y1 - y0 + 1, fill=False, edgecolor="white", linewidth=2.0, linestyle="--")
-    ax.add_patch(rect)
     ax.set_title("Top-5 Candidate Superpixels (Overlay)")
     ax.axis("off")
     ax.text(
@@ -353,9 +350,8 @@ def main() -> None:
     for rank, ev in enumerate(top3, start=1):
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(img_resized)
-        _draw_points(ax, prev_pos, color="#1f77b4", label="previous positive", marker="o", size=44)
-        _draw_points(ax, prev_neg, color="#ff7f0e", label="negative", marker="^", size=42)
-        ax.legend(loc="upper right", fontsize=8)
+        _draw_points(ax, prev_pos, color="blue", label="previous positive", marker="o", size=44)
+        _draw_points(ax, prev_neg, color="red", label="negative", marker="^", size=42)
         ax.set_title(f"Top-{rank} Candidate Context (SAM2 score={ev.score:.4f})")
         ax.axis("off")
         _save(fig, out_dir / f"03_top{rank}_previous_positive_prompts.png")
@@ -367,7 +363,7 @@ def main() -> None:
         vis = _overlay_mask(img_resized, cand_mask, color=(255, 255, 0), alpha=0.45)
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(vis)
-        ax.scatter([cx], [cy], c="red", s=70, marker="x", linewidths=2.0)
+        ax.scatter([cx], [cy], c="green", s=70, marker="x", linewidths=2.0)
         ax.set_title(f"Top-{rank} Candidate Superpixel + Centroid")
         ax.axis("off")
         _save(fig, out_dir / f"04_top{rank}_candidate_centroid.png")
@@ -377,10 +373,9 @@ def main() -> None:
         cx, cy = info.node_list[ev.candidate.node_id].center
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(img_resized)
-        _draw_points(ax, prev_pos, color="#1f77b4", label="previous positive", marker="o", size=40)
-        _draw_points(ax, prev_neg, color="#ff7f0e", label="negative", marker="^", size=38)
-        ax.scatter([cx], [cy], c="red", s=70, marker="x", linewidths=2.0, label="new centroid")
-        ax.legend(loc="upper right", fontsize=8)
+        _draw_points(ax, prev_pos, color="blue", label="previous positive", marker="o", size=40)
+        _draw_points(ax, prev_neg, color="red", label="negative", marker="^", size=38)
+        ax.scatter([cx], [cy], c="green", s=70, marker="x", linewidths=2.0, label="new centroid")
         ax.set_title(f"Top-{rank} Candidate Prompt (add centroid)")
         ax.axis("off")
         _save(fig, out_dir / f"05_top{rank}_candidate_prompt.png")
